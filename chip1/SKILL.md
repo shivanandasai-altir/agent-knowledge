@@ -82,3 +82,16 @@ Wiki files: accountdetails-account.md (optional)
 Source files: apps/crm/src/features/AccountDetails/... (optional)
 Related docs: .claude/docs/architecture-patterns.md (optional)
 ```
+
+## Keeping Docs in Sync
+
+The reference docs in `chip1/docs/` are mirrored from `chip1-webui/.claude/docs/`.
+When docs are added or modified in chip1-webui, sync them:
+
+```bash
+cd ~/chip1-webui
+bash .agents/skills/memory/sync-docs.sh --push
+```
+
+The sync script copies `.md` files from chip1-webui's `.claude/docs/` to this directory,
+then commits and pushes to agent-knowledge.
