@@ -34,11 +34,9 @@ agent-knowledge/
 git clone git@github.com:shivanandasai-altir/agent-knowledge.git ~/agent-knowledge
 ```
 
-Then point your project's CLAUDE.md / .cursorrules at it with the search-first protocol.
-
 ---
 
-## Commands
+## Commands & Prompts
 
 ### Search
 
@@ -50,17 +48,26 @@ python3 chip1/memory-search "PATCH mutation clearing a date field"
 python3 chip1/memory-search --project chip1-mobile "push notification"
 
 # Cross-project: search chip1-mobile, also include chip1 patterns
-# Results from chip1 are labeled "project: chip1"
 python3 chip1/memory-search --project chip1-mobile --include chip1 "PATCH mutation"
 
 # Include multiple sibling projects
 python3 chip1/memory-search --project chip1-mobile \
   --include chip1 --include chip1-analytics "pattern"
 
-# List all search tags in a project
+# List tags
 python3 chip1/memory-search --list-tags
 python3 chip1/memory-search --project chip1-mobile --list-tags
 ```
+
+**🗣️ Tell your AI agent:**
+
+> "Before you start, run `memory-search` for what I'm about to ask. Read the top matches and apply any relevant patterns."
+
+> "I'm new to chip1-mobile. Search its memory journal and include chip1 patterns too."
+
+> "Search chip1-mobile for 'push notification' and include relevant results from chip1."
+
+---
 
 ### Add a Decision
 
@@ -77,15 +84,21 @@ echo '{
 }' | bash chip1/update-memory.sh --push
 ```
 
-Target a different project with the `project` field:
+Target a different project:
 
 ```bash
-echo '{
-  "project": "chip1-mobile",
-  "action": "add",
-  "title": "..."
-}' | bash ~/agent-knowledge/chip1/update-memory.sh --push
+echo '{"project":"chip1-mobile","action":"add","title":"..."}' | bash chip1/update-memory.sh --push
 ```
+
+**🗣️ Tell your AI agent:**
+
+> "This fix reveals a pattern. Persist it to the memory journal: title '...', context '...', pattern '...', tags 'PATCH, createDiff', source files pointing to the changed file, and push it."
+
+> "Extract the key convention or decision from PR #3925 and persist it to the memory journal with `--push`. Include context, pattern, tags, author, source files, and which doc it relates to."
+
+> "Persist this decision to the chip1-mobile project memory journal. Include `project: chip1-mobile` in the JSON."
+
+---
 
 ### List / Delete
 
@@ -94,11 +107,21 @@ echo '{"action":"list"}' | bash chip1/update-memory.sh
 echo '{"project":"chip1-mobile","action":"delete","title":"..."}' | bash chip1/update-memory.sh
 ```
 
+---
+
 ### Extract Decisions from a PR
 
 ```bash
 bash chip1/pr-memory.sh 3925
 ```
+
+**🗣️ Tell your AI agent:**
+
+> "Fetch PR #3925 and extract any new conventions or architecture decisions from it. For each finding, ask me if I want to persist it. Then `update-memory.sh --push` the confirmed ones with proper context, pattern, tags, and source files."
+
+> "Look through the last 5 merged PRs. Identify patterns worth persisting. Present your findings and ask before pushing."
+
+---
 
 ### Bootstrap a New Project
 
@@ -110,18 +133,9 @@ git commit -m "chip1-mobile: bootstrap"
 git push
 ```
 
----
+**🗣️ Tell your AI agent:**
 
-## Prompts
-
-| Scenario | Prompt |
-|----------|--------|
-| **Before asking agent to code** | "Before you start, run `memory-search` for what I'm about to ask. Read the top matches and apply any relevant patterns." |
-| **Onboarding to new project** | "I'm new to chip1-mobile. Search its memory journal and include chip1 patterns too." |
-| **After fixing a bug** | "This fix reveals a pattern. Persist it to the memory journal with proper context, tags, and push it." |
-| **Extracting from a PR** | "Fetch PR #3925 and extract any new conventions. Ask before persisting." |
-| **Bulk-check recent work** | "Look at the last 5 commits. Identify patterns worth persisting. Ask before pushing." |
-| **Bootstrap a project** | "Bootstrap a new project called chip1-mobile in agent-knowledge and push it." |
+> "Bootstrap a new project called chip1-mobile in agent-knowledge using new-project.sh, then push it. Also add a CLAUDE.md trigger pointing at it."
 
 ---
 
