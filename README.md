@@ -1,252 +1,146 @@
 # agent-knowledge
 
-**Shared knowledge repository** for AI coding agents (pi, Claude Code, Cursor).
+**Shared engineering knowledge** for AI coding agents (pi, Claude Code, Cursor).
 
-Prevents the "start from zero every time" problem: agents read past decisions before writing code, and persist new discoveries so they're never learned twice.
+Prevents the "start from zero" problem: agents read past decisions before writing code, and persist new discoveries so they're never learned twice.
 
-Partitioned per project:
+New projects inherit patterns from established siblings via cross-project search.
+
+---
+
+## Layout
 
 ```
 agent-knowledge/
-├── chip1/                   # chip1-webui conventions, docs, and scripts
+├── chip1/                   # chip1-webui knowledge (seed project)
 │   ├── MEMORY.md            # decision journal with Memory Index + search tags
-│   ├── SKILL.md             # full agent instructions
+│   ├── SKILL.md             # pi agent skill definition
 │   ├── memory-search        # TF-IDF search tool (zero dependencies)
 │   ├── update-memory.sh     # CRUD script
-│   ├── pr-memory.sh         # extract decisions from a GitHub PR
-│   └── docs/                # reference documentation (13 files)
-├── chip1-mobile/            # future
+│   ├── memory_lib.py        # Python library for MEMORY.md tables
+│   ├── new-project.sh       # Bootstrap new project directories
+│   ├── pr-memory.sh         # Extract decisions from a GitHub PR
+│   └── docs/                # Reference documentation (13 files)
+├── chip1-mobile/            # Created via new-project.sh
+├── chip1-analytics/         # Future projects...
 └── README.md
 ```
 
 ---
 
-## Setup — One Time
+## Setup
 
 ```bash
 git clone git@github.com:shivanandasai-altir/agent-knowledge.git ~/agent-knowledge
 ```
 
-Then point your project's CLAUDE.md / .cursorrules at it (see chip1-webui for an example).
+Then point your project's CLAUDE.md / .cursorrules at it with the search-first protocol.
 
 ---
 
-## How to Use This (Prompts + Commands)
+## Commands
 
-### 🧑‍💻 For Humans — Before Asking an Agent
-
-When you're about to ask an agent to do something, first check what's already known:
+### Search
 
 ```bash
-# 1. Sync
-cd ~/agent-knowledge && git pull --rebase
+# Search a project's knowledge
+python3 chip1/memory-search "PATCH mutation clearing a date field"
 
-# 2. Search the memory journal
-python3 chip1/memory-search "PATCH mutations clearing a date field"
-
-# Sample output:
-#   [1] PATCH mutations must forward diff.unset for cleared fields
-#       score: 0.33  date: 2026-05-27
-#       tags: PATCH, createDiff, unset, payload, mutation, clearing-fields
-#       why: createDiff was called but diff.unset was never sent to the API...
-#       how: Forward diff.unset alongside diff.changed...
-```
-
-Search a different project:
-
-```bash
+# Search a different project
 python3 chip1/memory-search --project chip1-mobile "push notification"
-```
 
-Cross-project search — inherit patterns from sibling projects:
-
-```bash
-# When working on chip1-mobile, also show relevant patterns from chip1
+# Cross-project: search chip1-mobile, also include chip1 patterns
+# Results from chip1 are labeled "project: chip1"
 python3 chip1/memory-search --project chip1-mobile --include chip1 "PATCH mutation"
 
-# Results from chip1 are labeled with "project: chip1"
-# Results from chip1-mobile show the date instead
-
 # Include multiple sibling projects
-python3 chip1/memory-search --project chip1-mobile --include chip1 --include chip1-analytics "pattern"
-```
+python3 chip1/memory-search --project chip1-mobile \
+  --include chip1 --include chip1-analytics "pattern"
 
-Other useful searches:
-
-```bash
-# Finding form-related decisions
-python3 chip1/memory-search "formik cascading fields onChange"
-
-# Finding table patterns
-python3 chip1/memory-search "table column definitions getSimpleCells"
-
-# Listing all tags (to discover what's covered)
+# List all search tags in a project
 python3 chip1/memory-search --list-tags
-
-# Tags for a specific project
 python3 chip1/memory-search --project chip1-mobile --list-tags
 ```
 
-### 🤖 For Agents — Before Writing Code
-
-Your CLAUDE.md should instruct you to do this:
-
-```bash
-# 1. Sync
-(cd ~/agent-knowledge && git pull --rebase)
-
-# 2. Search — not read the whole file
-~/agent-knowledge/chip1/memory-search "<brief description of the task>"
-
-# 3. Read the top matches
-# (output includes the context and pattern snippet)
-```
-
-**Embed this directly in your CLAUDE.md** (see chip1-webui for the exact format).
-
-### 📝 Adding a New Decision
-
-When you discover a convention, pattern, or architecture rule:
+### Add a Decision
 
 ```bash
 echo '{
   "action": "add",
   "title": "Use createDiff for PATCH mutations",
-  "context": "Prevents backend validations on unrelated field groups",
+  "context": "Sending full objects causes backend validations on unrelated field groups",
   "pattern": "Use createDiff from @chip1/utils/helpers/diffPatch to compute minimal diffs",
   "tags": "PATCH, createDiff, diff, minimal-payload",
-  "author": "your-name (via PR #NNNN review)",
-  "sourceFiles": ["apps/crm/src/features/AccountDetails/AccountDetailsTab/AccountDetailsIsland.tsx"],
-  "relatedDocs": [".claude/docs/architecture-patterns.md"],
-  "supersedes": "Manual field-by-field comparison"
-}' | bash ~/agent-knowledge/chip1/update-memory.sh --push
+  "author": "your-name (via PR #NNNN)",
+  "sourceFiles": ["apps/crm/src/features/.../file.tsx"],
+  "relatedDocs": [".claude/docs/architecture-patterns.md"]
+}' | bash chip1/update-memory.sh --push
 ```
 
-The `--push` flag commits and pushes for the team. Without it, writes locally.
-
-To target a different project (future: `chip1-mobile`, `chip1-analytics`):
+Target a different project with the `project` field:
 
 ```bash
-# Add `project` field matching the subdirectory name under agent-knowledge/
 echo '{
   "project": "chip1-mobile",
-  ...
+  "action": "add",
+  "title": "..."
 }' | bash ~/agent-knowledge/chip1/update-memory.sh --push
 ```
 
-Default: `chip1` (the directory the script lives in).
-
-#### 🗣️ Prompt to tell your AI agent
-
-> Extract the key convention or decision from PR #3925 and persist it to the memory journal with `--push`. Include context, pattern, tags, author, source files, and which doc it relates to.
-
-Or after fixing a bug that revealed a pattern you want captured:
-
-> The fix for this bug (clearing a date field silently failed) reveals a pattern we need to capture. Add a memory entry titled "PATCH mutations must forward diff.unset for cleared fields" with tags, source files, and push it.
-
-When targeting a different project:
-
-> Persist this decision to the chip1-mobile project memory journal. Include project: chip1-mobile in the JSON.
-
-#### 🗣️ Cross-project search prompts
-
-> I'm new to chip1-mobile. Search its memory journal and also include chip1 patterns so I can see what conventions already exist.
-
-> Search chip1-mobile for 'push notification' and include relevant results from chip1 too.
-
-> Bootstrap a new project called chip1-analytics and seed it with cross-project patterns from chip1.
-
-### ⚡ Bootstrapping a New Project
-
-When adding a new project to the organization, create its memory directory with shared tooling:
+### List / Delete
 
 ```bash
-bash ~/agent-knowledge/chip1/new-project.sh chip1-mobile
+echo '{"action":"list"}' | bash chip1/update-memory.sh
+echo '{"project":"chip1-mobile","action":"delete","title":"..."}' | bash chip1/update-memory.sh
 ```
 
-This creates `~/agent-knowledge/chip1-mobile/` with:
-- **Symlinks** to shared scripts (`update-memory.sh`, `memory-search`, `memory_lib.py`, `pr-memory.sh`) — updates to the tooling propagate automatically
-- **Template MEMORY.md** with a seed entry encouraging cross-project search
-- **Template SKILL.md** tailored to the project
-
-#### 🗣️ Prompt
-
-> I need to add a new project called chip1-mobile to the agent-knowledge system. Use new-project.sh to bootstrap it, then push. Also update chip1-webui's CLAUDE.md with a trigger pointing at it.
-
-### 📤 Extracting Decisions from a GitHub PR
-
-PR descriptions, review comments, and discussion threads often contain valuable context that would otherwise be lost.
-
-#### 🖥️ Command
+### Extract Decisions from a PR
 
 ```bash
-bash ~/agent-knowledge/chip1/pr-memory.sh 3925
+bash chip1/pr-memory.sh 3925
 ```
 
-Analyze the output, identify conventions, then persist them with `update-memory.sh --push`.
+### Bootstrap a New Project
 
-#### 🗣️ Prompt to tell your AI agent
-
-> Fetch PR #3925 and extract any new conventions or architecture decisions from it. For each finding, ask me if I want to persist it. Then `update-memory.sh --push` the confirmed ones with proper context, pattern, tags, and source files.
-
-Or for a more general sweep:
-
-> Look through the last 5 merged PRs in this repo. For each one, identify if there's a new pattern or decision worth persisting to the memory journal. Present your findings and ask before persisting.
-
-### 📖 Reading Reference Docs by Trigger
-
-**CLAUDE.md** has a trigger table that maps task types to specific docs:
-
-| If your task is... | Then read... |
-|---|---|
-| PATCH mutation | `architecture-patterns.md` |
-| Formik form with cascading fields | `formik-patterns.md` |
-| TanStack table column definitions | `simple-cells.md` |
-| Filter system component | `filter-system.md` |
-| NavBar / token refresh | `app-specific-patterns.md` |
+```bash
+bash chip1/new-project.sh chip1-mobile
+cd ~/agent-knowledge && git add chip1-mobile && git commit -m "chip1-mobile: bootstrap" && git push
+```
 
 ---
 
-## Files
+## Prompts
 
-| File | Purpose |
-|------|---------|
-| `chip1/MEMORY.md` | Decision journal with **Memory Index** (categorized overview) + per-entry **Tags** for search |
-| `chip1/memory-search` | Zero-dependency TF-IDF search — finds relevant entries even when task phrasing differs from the original decision wording |
-| `chip1/update-memory.sh` | CRUD script — `add`, `update`, `delete`, `list`. Auto-rebuilds Memory Index after every change. |
-| `chip1/pr-memory.sh` | Fetches PR metadata, diffs, comments from GitHub for decision extraction |
-| `chip1/memory_lib.py` | Python library for parsing/rendering MEMORY.md tables |
-| `chip1/SKILL.md` | Full agent instructions (pi skill definition) |
-| `chip1/docs/` | Reference docs mirrored from source project |
+| Scenario | Prompt |
+|----------|--------|
+| **Before asking agent to code** | "Before you start, run `memory-search` for what I'm about to ask. Read the top matches and apply any relevant patterns." |
+| **Onboarding to new project** | "I'm new to chip1-mobile. Search its memory journal and include chip1 patterns too." |
+| **After fixing a bug** | "This fix reveals a pattern. Persist it to the memory journal with proper context, tags, and push it." |
+| **Extracting from a PR** | "Fetch PR #3925 and extract any new conventions. Ask before persisting." |
+| **Bulk-check recent work** | "Look at the last 5 commits. Identify patterns worth persisting. Ask before pushing." |
+| **Bootstrap a project** | "Bootstrap a new project called chip1-mobile in agent-knowledge and push it." |
 
-## CRUD Operations (update-memory.sh)
+---
 
-| Operation | Description |
-|-----------|-------------|
-| `add` | Adds entry. Checks for duplicates (NOOP). Supports `supersedes`, `tags`, `sourceFiles`, `relatedDocs`, `wikiFiles`. |
-| `update` | Updates context/pattern/tags/author of an existing entry. |
-| `delete` | Marks `archived` — never truly deleted, preserved for history. |
-| `list` | Lists all entries grouped by status (active / superseded / archived). |
-
-### Input Fields
+## CRUD Input Fields
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `action` | ✅ | `add` \| `update` \| `delete` \| `list` |
-| `title` | ✅ | Short, unique phrase (becomes the bold link) |
+| `title` | ✅ | Short unique phrase |
 | `context` | ✅ | Why this decision was made |
-| `pattern` | ✅ | The actionable convention or rule |
-| `tags` | | Comma-separated keywords for `memory-search`, e.g. `"PATCH, createDiff, unset"` |
-| `author` | | Who discovered it, e.g. `"your-name (via PR #3925)"` |
-| `supersedes` | | Exact title of the entry this replaces |
-| `sourceFiles` | | Array of source file paths |
+| `pattern` | ✅ | The actionable convention |
+| `project` | | Subdirectory name (default: `chip1`) |
+| `tags` | | Comma-separated keywords for search |
+| `author` | | Who discovered it |
+| `supersedes` | | Exact title this replaces |
+| `sourceFiles` | | Array of file paths |
 | `relatedDocs` | | Array of doc paths |
-| `wikiFiles` | | Array of wiki/ADR file names |
-| `project` | | Project subdirectory name (default: `chip1`). Future: `chip1-mobile`, `chip1-analytics`, etc. |
+| `wikiFiles` | | Array of wiki file names |
 
 ## Requirements
 
-- `python3` — for memory-search, memory_lib.py, and update-memory.sh
-- `bash` — script runtime
+- `python3` — scripts
+- `bash` — runtime
 - `gh` — GitHub CLI (for `pr-memory.sh` only)
-- `git` — for pushing decisions to the team
+- `git` — pushing to the team

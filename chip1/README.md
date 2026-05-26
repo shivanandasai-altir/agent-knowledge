@@ -1,8 +1,8 @@
-# chip1 — Memory System for chip1-webui
+# chip1 — Engineering Knowledge Base
 
-This directory is the **shared memory and reference system** for the chip1-webui monorepo (`apps/crm`, `apps/myChip1`, `packages/*`).
+This directory is the **shared engineering knowledge** for the [chip1-webui](https://github.com/altirllc/chip1-webui) monorepo (`apps/crm`, `apps/myChip1`, `packages/*`).
 
-It prevents the "start from zero" problem: agents read past decisions before writing code, and persist new discoveries so they're never learned twice.
+It captures conventions, architecture decisions, and patterns so AI agents never start from zero.
 
 ---
 
@@ -28,23 +28,24 @@ echo '{"action":"add","title":"..."}' | bash chip1/update-memory.sh --push
 
 | File | Purpose |
 |------|---------|
-| `MEMORY.md` | Decision journal: chronological entries with **Memory Index** (categorized) + per-entry **Tags** for search |
-| `memory-search` | TF-IDF search tool (zero deps). Finds relevant entries even when phrasing differs. |
-| `update-memory.sh` | CRUD script: `add`, `update`, `delete`, `list`. Auto-rebuilds Memory Index on every change. |
-| `memory_lib.py` | Python library that parses and renders MEMORY.md tables |
-| `pr-memory.sh` | Fetches PR metadata, diffs, comments from GitHub |
+| `MEMORY.md` | Decision journal — chronological entries with **Memory Index** + **Tags** for search |
+| `memory-search` | TF-IDF search tool (zero deps). Finds entries even when phrasing differs. Supports `--include` for cross-project search. |
+| `update-memory.sh` | CRUD script: `add`, `update`, `delete`, `list`. Auto-rebuilds Memory Index. Supports `project` field for multi-project. |
+| `memory_lib.py` | Python library for parsing / rendering MEMORY.md tables |
+| `new-project.sh` | Bootstrap a new project subdirectory with symlinks to shared tooling |
+| `pr-memory.sh` | Fetch PR metadata, diffs, comments from GitHub for decision extraction |
 | `docs/` | Reference documentation (13 files) mirrored from `chip1-webui/.claude/docs/` |
-| `SKILL.md` | pi agent skill definition for the memory system |
+| `SKILL.md` | pi agent skill definition for the knowledge system |
 
 ---
 
 ## How This Connects to chip1-webui
 
-When working in `chip1-webui`, two things drive the memory system:
+Two mechanisms drive the knowledge system when working in `chip1-webui`:
 
 ### 1. CLAUDE.md trigger table
 
-The file `chip1-webui/CLAUDE.md` has a trigger table. Before starting any task, the agent checks this table:
+The file `chip1-webui/CLAUDE.md` maps task types to specific reference docs:
 
 | If you're working on... | The agent reads... |
 |---|---|
@@ -55,7 +56,7 @@ The file `chip1-webui/CLAUDE.md` has a trigger table. Before starting any task, 
 | NavBar / token refresh | `app-specific-patterns.md` |
 | **Anything** | It runs `memory-search "<task>"` first |
 
-### 2. Memory search before starting
+### 2. Search-first protocol
 
 CLAUDE.md tells the agent to **search, not read the whole file**:
 
@@ -75,6 +76,12 @@ Then read only the matching entries from `MEMORY.md`.
 
 > "Check the memory journal for decisions about PATCH mutations before implementing this form submit."
 
+### When onboarding to a new project
+
+> "I'm new to this codebase. Search the memory journal and include chip1 patterns so I can see what conventions already exist."
+
+> "Run `memory-search --include chip1` for everything I ask until the project builds up its own patterns."
+
 ### After discovering a pattern during a PR review
 
 > "This review revealed a pattern. Persist it to the memory journal: title '...', context '...', pattern '...', tags 'PATCH, createDiff', source files pointing to the changed file, and push it."
@@ -83,13 +90,13 @@ Then read only the matching entries from `MEMORY.md`.
 
 > "Fetch PR #4099, analyze what pattern or decision emerged, and ask me if I want to persist it."
 
-### When onboarding to an unfamiliar area
-
-> "I need to work with filters. Search the memory journal for filter-related decisions and read the filter-system.md doc first."
-
 ### To bulk-check recent work for memory-worthy patterns
 
 > "Look at the last 5 commits in this branch. Identify any new conventions or patterns that should be in the memory journal. Present them to me and ask before persisting."
+
+### To bootstrap a new project
+
+> "Bootstrap a new project called chip1-mobile in agent-knowledge using new-project.sh, then push it. Also add a CLAUDE.md trigger pointing at it."
 
 ---
 
@@ -98,11 +105,14 @@ Then read only the matching entries from `MEMORY.md`.
 ### Search the memory
 
 ```bash
-# Generic search
+# Basic search
 python3 ~/agent-knowledge/chip1/memory-search "formik cascading fields onChange"
 
 # Tag-based discovery (see what topics exist)
 python3 ~/agent-knowledge/chip1/memory-search --list-tags
+
+# Search a different project
+python3 ~/agent-knowledge/chip1/memory-search --project chip1-mobile "push notification"
 ```
 
 ### Cross-project search (inherit patterns from sibling projects)
@@ -114,9 +124,9 @@ When starting a new project or exploring unfamiliar patterns, include results fr
 python3 ~/agent-knowledge/chip1-mobile/memory-search --include chip1 "PATCH mutation"
 
 # Results from chip1 are labeled with "project: chip1"
-# Results from the primary project show dates instead
+# Primary project results show dates instead
 
-# Include multiple projects
+# Include multiple sibling projects
 python3 ~/agent-knowledge/chip1-mobile/memory-search \
   --include chip1 --include chip1-analytics "pattern"
 
@@ -136,10 +146,6 @@ Creates the project directory with symlinks to shared scripts. Push it:
 cd ~/agent-knowledge && git add chip1-mobile && git commit -m "chip1-mobile: bootstrap" && git push
 ```
 
-#### 🗣️ Prompt
-
-> Bootstrap a new project called chip1-mobile in agent-knowledge, then push it. Also add a CLAUDE.md trigger pointing at it.
-
 ### Add a decision
 
 ```bash
@@ -147,15 +153,14 @@ echo '{
   "action": "add",
   "title": "Use createDiff for PATCH mutations",
   "context": "Sending full objects in PATCH causes backend validations on unrelated field groups",
-  "pattern": "Use createDiff from @chip1/utils/helpers/diffPatch to compute minimal diffs. Skip mutation when nothing changed.",
+  "pattern": "Use createDiff from @chip1/utils/helpers/diffPatch to compute minimal diffs",
   "tags": "PATCH, createDiff, diff, minimal-payload, validations",
   "author": "your-name (via PR #NNNN review)",
   "sourceFiles": ["apps/crm/src/features/AccountDetails/AccountDetailsTab/AccountDetailsIsland.tsx"],
-  "relatedDocs": [".claude/docs/architecture-patterns.md"],
-  "supersedes": ""
+  "relatedDocs": [".claude/docs/architecture-patterns.md"]
 }' | bash ~/agent-knowledge/chip1/update-memory.sh --push
 
-# Or target a different project (future: chip1-mobile)
+# Or target a different project
 echo '{
   "project": "chip1-mobile",
   "action": "add",
@@ -167,6 +172,9 @@ echo '{
 
 ```bash
 echo '{"action":"list"}' | bash ~/agent-knowledge/chip1/update-memory.sh
+
+# Or from another project
+echo '{"project":"chip1-mobile","action":"list"}' | bash ~/agent-knowledge/chip1/update-memory.sh
 ```
 
 ### Extract decisions from a PR
@@ -192,27 +200,28 @@ cd ~/chip1-webui && bash .agents/skills/memory/sync-docs.sh --push
 ## Workflow Summary
 
 ```
-┌─────────────────────────────────────────┐
-│  You tell the agent to do something     │
-└──────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│  You tell the agent to do something         │
+└──────────┬──────────────────────────────────┘
            ▼
-┌─────────────────────────────────────────┐
-│  Agent runs: memory-search "<task>"     │
-│  → finds relevant past decisions        │
-│  → reads matching entries from MEMORY.md│
-│  → reads trigger-matched doc            │
-└──────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│  Agent runs: memory-search "<task>"         │
+│  → finds relevant past decisions            │
+│  → reads matching entries from MEMORY.md    │
+│  → reads trigger-matched doc                │
+│  → (optional) --include sibling projects    │
+└──────────┬──────────────────────────────────┘
            ▼
-┌─────────────────────────────────────────┐
-│  Agent writes code applying patterns    │
-└──────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│  Agent writes code applying patterns        │
+└──────────┬──────────────────────────────────┘
            ▼
-┌─────────────────────────────────────────┐
-│  If new pattern discovered:             │
-│  update-memory.sh add --push            │
-│  → auto-rebuilds Memory Index           │
-│  → team syncs via git pull              │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│  If new pattern discovered:                 │
+│  update-memory.sh add --push                │
+│  → auto-rebuilds Memory Index               │
+│  → team syncs via git pull                  │
+└─────────────────────────────────────────────┘
 ```
 
 ## Requirements
