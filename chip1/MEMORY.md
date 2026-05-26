@@ -105,3 +105,18 @@ Pattern: Use `requiresPageAccess` on TNavLink + `usePageAccess(path)` guard in p
 Status: archived
 Context: Type errors must be caught before commit
 Pattern: Run pnpm check:typescript before every commit
+
+### 2026-05-27 — Temporary test entry
+Status: archived
+Archived by: kpanchal-altir (via PR #4099)
+Author: kpanchal-altir (via PR #4099)
+Context: Testing the author audit trail feature
+Pattern: This is a test — will delete immediately
+
+### 2026-05-27 — Prevent useQuery from firing with empty-string IDs for optional relationships
+Status: active
+Author: kpanchal-altir (via PR #4099)
+Context: In StockDetailsIsland.tsx:50-53, when a stock has no PO line, `stock.poLine?.po?.poId ?? ""` passes empty-string IDs to `useQuery`, causing unnecessary API calls. The query fires with empty params even though the relationship is optional.
+Pattern: When querying related entities through optional/conditional relationships, use the `enabled` option to prevent firing queries when IDs are absent. Never use `?? ""` (empty-string fallback) for query parameters that depend on optional nested relationships.
+Source files: apps/crm/src/features/StockDetails/StockDetailsTab/StockDetailsIsland.tsx
+Related docs: .claude/docs/architecture-patterns.md

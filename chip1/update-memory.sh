@@ -21,6 +21,7 @@
 #   wikiFiles   - Array of wiki file names (optional)
 #   sourceFiles - Array of source file paths (optional)
 #   relatedDocs - Array of doc file paths (optional)
+#   author      - Who made the change (optional, for audit trail)
 #
 # Requires: jq, python3
 
@@ -57,6 +58,7 @@ SUPERSEDES=$(echo "$INPUT" | jq -r '.supersedes // ""')
 WIKI_FILES=$(echo "$INPUT"  | jq -r '( .wikiFiles // [] ) | join(", ")')
 SOURCE_FILES=$(echo "$INPUT" | jq -r '( .sourceFiles // [] ) | join(", ")')
 RELATED_DOCS=$(echo "$INPUT" | jq -r '( .relatedDocs // [] ) | join(", ")')
+AUTHOR=$(echo "$INPUT"   | jq -r '.author // ""')
 
 if [ -z "$ACTION" ]; then
   echo "ERROR: action is required (add | update | delete | list)" >&2
@@ -117,7 +119,7 @@ cmd_add() {
   fi
 
   python3 - "$MEMORY_FILE" "$TITLE" "$CONTEXT" "$PATTERN" "$SUPERSEDES" "$TODAY" \
-           "$WIKI_FILES" "$SOURCE_FILES" "$RELATED_DOCS" <<'PYEOF'
+           "$WIKI_FILES" "$SOURCE_FILES" "$RELATED_DOCS" "$AUTHOR" <<'PYEOF'
 import sys, re
 
 filepath = sys.argv[1]
@@ -129,6 +131,7 @@ today = sys.argv[6]
 wiki_files = sys.argv[7] if len(sys.argv) > 7 else ""
 source_files = sys.argv[8] if len(sys.argv) > 8 else ""
 related_docs = sys.argv[9] if len(sys.argv) > 9 else ""
+author = sys.argv[10] if len(sys.argv) > 10 else ""
 
 with open(filepath, "r", encoding="utf-8") as f:
   lines = f.read().split("\n")
@@ -196,6 +199,8 @@ if supersedes_title:
 # Append the new entry block
 block = f"### {today} — {target_title}"
 block += f"\nStatus: active"
+if author:
+    block += f"\nAuthor: {author}"
 block += f"\nContext: {new_context}"
 block += f"\nPattern: {new_pattern}"
 if supersedes_title:
@@ -222,13 +227,14 @@ PYEOF
 }
 
 cmd_update() {
-  python3 - "$MEMORY_FILE" "$TITLE" "$CONTEXT" "$PATTERN" <<'PYEOF'
+  python3 - "$MEMORY_FILE" "$TITLE" "$CONTEXT" "$PATTERN" "$AUTHOR" <<'PYEOF'
 import sys, re
 
 filepath = sys.argv[1]
 target_title = sys.argv[2].strip()
 new_context = sys.argv[3] if len(sys.argv) > 3 else ""
 new_pattern = sys.argv[4] if len(sys.argv) > 4 else ""
+author = sys.argv[5] if len(sys.argv) > 5 else ""
 
 with open(filepath, "r", encoding="utf-8") as f:
   lines = f.read().split("\n")
@@ -247,6 +253,9 @@ for i, line in enumerate(lines):
     if re.match(r"^Pattern:\s", line) and new_pattern:
       lines[i] = f"Pattern: {new_pattern}"
       found = True
+    if re.match(r"^Author:\s", line) and author:
+      lines[i] = f"Author: {author}"
+      found = True
 
 if found:
   with open(filepath, "w", encoding="utf-8") as f:
@@ -258,11 +267,12 @@ PYEOF
 }
 
 cmd_delete() {
-  python3 - "$MEMORY_FILE" "$TITLE" <<'PYEOF'
+  python3 - "$MEMORY_FILE" "$TITLE" "$AUTHOR" <<'PYEOF'
 import sys, re
 
 filepath = sys.argv[1]
 target_title = sys.argv[2].strip()
+author = sys.argv[3] if len(sys.argv) > 3 else ""
 
 with open(filepath, "r", encoding="utf-8") as f:
   lines = f.read().split("\n")
@@ -276,6 +286,8 @@ for i, line in enumerate(lines):
     continue
   if in_entry and re.match(r"^Status:\s", line):
     lines[i] = "Status: archived"
+    if author:
+      lines.insert(i + 1, f"Archived by: {author}")
     found = True
     break
 
@@ -301,7 +313,9 @@ do_push() {
     fi
   fi
   git add chip1/MEMORY.md
-  git commit -m "chip1: $ACTION $TITLE" 2>/dev/null || true
+  local author_msg=""
+  [ -n "$AUTHOR" ] && author_msg=" (by $AUTHOR)"
+  git commit -m "chip1: $ACTION $TITLE$author_msg" 2>/dev/null || true
   if git push 2>/dev/null; then
     echo "  (pushed to agent-knowledge)"
   else
