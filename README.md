@@ -1,106 +1,170 @@
 # agent-knowledge
 
-Shared knowledge repository for AI coding agents (pi, Claude Code, Cursor).
+**Shared knowledge repository** for AI coding agents (pi, Claude Code, Cursor).
 
-Stores cross-session decision journals, reference documentation, conventions,
-and skills that agents read before starting work and write to when discovering
-new patterns. Prevents the "Delhi vs Bangalore" problem — no blind appends,
-duplicates are NOOP'd, outdated entries are superseded, not deleted.
+Prevents the "start from zero every time" problem: agents read past decisions before writing code, and persist new discoveries so they're never learned twice.
 
-Partitioned per project so a single clone serves the whole organization:
+Partitioned per project:
 
 ```
 agent-knowledge/
 ├── chip1/                   # chip1-webui conventions, docs, and scripts
-│   ├── MEMORY.md            # decision journal (17 seed entries)
+│   ├── MEMORY.md            # decision journal with Memory Index + search tags
 │   ├── SKILL.md             # full agent instructions
-│   ├── update-memory.sh     # CRUD script (bash + jq + python3)
+│   ├── memory-search        # TF-IDF search tool (zero dependencies)
+│   ├── update-memory.sh     # CRUD script
 │   ├── pr-memory.sh         # extract decisions from a GitHub PR
 │   └── docs/                # reference documentation (13 files)
-│       ├── architecture-patterns.md
-│       ├── formik-patterns.md
-│       ├── filter-system.md
-│       ├── simple-cells.md
-│       ├── table-loading-patterns.md
-│       ├── selection-action-bar.md
-│       ├── code-redundancy.md
-│       ├── app-specific-patterns.md
-│       ├── i18n-rules.md
-│       ├── ts6-conventions.md
-│       ├── feature-flags.md
-│       ├── mcp-tools.md
-│       └── wiki-reference.md
-├── chip1-mobile/            # future project
+├── chip1-mobile/            # future
 └── README.md
 ```
 
-## Setup
+---
+
+## Setup — One Time
 
 ```bash
 git clone git@github.com:shivanandasai-altir/agent-knowledge.git ~/agent-knowledge
 ```
 
-## Usage
+Then point your project's CLAUDE.md / .cursorrules at it (see chip1-webui for an example).
 
-### Daily workflow
+---
+
+## How to Use This (Prompts + Commands)
+
+### 🧑‍💻 For Humans — Before Asking an Agent
+
+When you're about to ask an agent to do something, first check what's already known:
 
 ```bash
-# Before starting work — sync shared knowledge
-(cd ~/agent-knowledge && git pull --rebase)
+# 1. Sync
+cd ~/agent-knowledge && git pull --rebase
 
-# Read decisions for your project
-cat ~/agent-knowledge/chip1/MEMORY.md
+# 2. Search the memory journal
+python3 chip1/memory-search "PATCH mutations clearing a date field"
 
-# Read reference docs when needed
-cat ~/agent-knowledge/chip1/docs/architecture-patterns.md
+# Sample output:
+#   [1] PATCH mutations must forward diff.unset for cleared fields
+#       score: 0.33  date: 2026-05-27
+#       tags: PATCH, createDiff, unset, payload, mutation, clearing-fields
+#       why: createDiff was called but diff.unset was never sent to the API...
+#       how: Forward diff.unset alongside diff.changed...
 ```
 
-### Adding a new decision
-
-When an agent discovers a new convention, pattern, or architecture decision:
+Other useful searches:
 
 ```bash
-echo '{"action":"add","title":"Use createDiff for PATCH mutations","context":"Prevents backend validations on unrelated field groups","pattern":"Use createDiff from @chip1/utils/helpers/diffPatch to compute minimal diffs"}' \
-  | bash ~/agent-knowledge/chip1/update-memory.sh --push
+# Finding form-related decisions
+python3 chip1/memory-search "formik cascading fields onChange"
+
+# Finding table patterns
+python3 chip1/memory-search "table column definitions getSimpleCells"
+
+# Listing all tags (to discover what's covered)
+python3 chip1/memory-search --list-tags
+```
+
+### 🤖 For Agents — Before Writing Code
+
+Your CLAUDE.md should instruct you to do this:
+
+```bash
+# 1. Sync
+(cd ~/agent-knowledge && git pull --rebase)
+
+# 2. Search — not read the whole file
+~/agent-knowledge/chip1/memory-search "<brief description of the task>"
+
+# 3. Read the top matches
+# (output includes the context and pattern snippet)
+```
+
+**Embed this directly in your CLAUDE.md** (see chip1-webui for the exact format).
+
+### 📝 Adding a New Decision
+
+When you discover a convention, pattern, or architecture rule:
+
+```bash
+echo '{
+  "action": "add",
+  "title": "Use createDiff for PATCH mutations",
+  "context": "Prevents backend validations on unrelated field groups",
+  "pattern": "Use createDiff from @chip1/utils/helpers/diffPatch to compute minimal diffs",
+  "tags": "PATCH, createDiff, diff, minimal-payload",
+  "author": "your-name (via PR #NNNN review)",
+  "sourceFiles": ["apps/crm/src/features/AccountDetails/AccountDetailsTab/AccountDetailsIsland.tsx"],
+  "relatedDocs": [".claude/docs/architecture-patterns.md"],
+  "supersedes": "Manual field-by-field comparison"
+}' | bash ~/agent-knowledge/chip1/update-memory.sh --push
 ```
 
 The `--push` flag commits and pushes for the team. Without it, writes locally.
 
-### Extracting decisions from a GitHub PR
+### 📤 Extracting Decisions from a GitHub PR
 
-PR descriptions and review comments often contain valuable decisions that get lost.
-Pass a PR number to extract them:
-
-```bash
-bash ~/agent-knowledge/chip1/pr-memory.sh 3959
-```
-
-The script fetches the PR title, description, files changed, review comments,
-and conversation comments. An agent can then analyze the output, identify
-conventions/decisions, and persist them via `update-memory.sh --push`.
-
-### Syncing reference docs
-
-Reference docs in `chip1/docs/` are mirrored from the source project
-(e.g., `chip1-webui/.claude/docs/`). When docs are modified upstream, sync:
+PR descriptions and review comments often contain valuable context.
 
 ```bash
-# From the source project directory
-bash .agents/skills/memory/sync-docs.sh --push
+bash ~/agent-knowledge/chip1/pr-memory.sh 3925
 ```
 
-## CRUD Operations
+Analyze the output, identify conventions, then persist them with `update-memory.sh --push`.
+
+### 📖 Reading Reference Docs by Trigger
+
+**CLAUDE.md** has a trigger table that maps task types to specific docs:
+
+| If your task is... | Then read... |
+|---|---|
+| PATCH mutation | `architecture-patterns.md` |
+| Formik form with cascading fields | `formik-patterns.md` |
+| TanStack table column definitions | `simple-cells.md` |
+| Filter system component | `filter-system.md` |
+| NavBar / token refresh | `app-specific-patterns.md` |
+
+---
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `chip1/MEMORY.md` | Decision journal with **Memory Index** (categorized overview) + per-entry **Tags** for search |
+| `chip1/memory-search` | Zero-dependency TF-IDF search — finds relevant entries even when task phrasing differs from the original decision wording |
+| `chip1/update-memory.sh` | CRUD script — `add`, `update`, `delete`, `list`. Auto-rebuilds Memory Index after every change. |
+| `chip1/pr-memory.sh` | Fetches PR metadata, diffs, comments from GitHub for decision extraction |
+| `chip1/memory_lib.py` | Python library for parsing/rendering MEMORY.md tables |
+| `chip1/SKILL.md` | Full agent instructions (pi skill definition) |
+| `chip1/docs/` | Reference docs mirrored from source project |
+
+## CRUD Operations (update-memory.sh)
 
 | Operation | Description |
 |-----------|-------------|
-| `add` | Adds entry. If `supersedes` matches an active entry, marks old as `superseded`. Exact duplicates are NOOP'd. |
-| `update` | Updates context/pattern/wikiFiles/sourceFiles/relatedDocs of an existing entry. |
-| `delete` | Marks entry as `archived` (kept in journal for history). |
-| `list` | Lists all entries grouped by status. |
+| `add` | Adds entry. Checks for duplicates (NOOP). Supports `supersedes`, `tags`, `sourceFiles`, `relatedDocs`, `wikiFiles`. |
+| `update` | Updates context/pattern/tags/author of an existing entry. |
+| `delete` | Marks `archived` — never truly deleted, preserved for history. |
+| `list` | Lists all entries grouped by status (active / superseded / archived). |
+
+### Input Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `action` | ✅ | `add` \| `update` \| `delete` \| `list` |
+| `title` | ✅ | Short, unique phrase (becomes the bold link) |
+| `context` | ✅ | Why this decision was made |
+| `pattern` | ✅ | The actionable convention or rule |
+| `tags` | | Comma-separated keywords for `memory-search`, e.g. `"PATCH, createDiff, unset"` |
+| `author` | | Who discovered it, e.g. `"your-name (via PR #3925)"` |
+| `supersedes` | | Exact title of the entry this replaces |
+| `sourceFiles` | | Array of source file paths |
+| `relatedDocs` | | Array of doc paths |
+| `wikiFiles` | | Array of wiki/ADR file names |
 
 ## Requirements
 
-- `jq` — JSON parsing
-- `python3` — MEMORY.md manipulation (handles UTF-8 reliably on macOS)
+- `python3` — for memory-search, memory_lib.py, and update-memory.sh
 - `bash` — script runtime
 - `gh` — GitHub CLI (for `pr-memory.sh` only)
+- `git` — for pushing decisions to the team
