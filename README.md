@@ -102,15 +102,33 @@ echo '{
 
 The `--push` flag commits and pushes for the team. Without it, writes locally.
 
+#### 🗣️ Prompt to tell your AI agent
+
+> Extract the key convention or decision from PR #3925 and persist it to the memory journal with `--push`. Include context, pattern, tags, author, source files, and which doc it relates to.
+
+Or after fixing a bug that revealed a pattern you want captured:
+
+> The fix for this bug (clearing a date field silently failed) reveals a pattern we need to capture. Add a memory entry titled "PATCH mutations must forward diff.unset for cleared fields" with tags, source files, and push it.
+
 ### 📤 Extracting Decisions from a GitHub PR
 
-PR descriptions and review comments often contain valuable context.
+PR descriptions, review comments, and discussion threads often contain valuable context that would otherwise be lost.
+
+#### 🖥️ Command
 
 ```bash
 bash ~/agent-knowledge/chip1/pr-memory.sh 3925
 ```
 
 Analyze the output, identify conventions, then persist them with `update-memory.sh --push`.
+
+#### 🗣️ Prompt to tell your AI agent
+
+> Fetch PR #3925 and extract any new conventions or architecture decisions from it. For each finding, ask me if I want to persist it. Then `update-memory.sh --push` the confirmed ones with proper context, pattern, tags, and source files.
+
+Or for a more general sweep:
+
+> Look through the last 5 merged PRs in this repo. For each one, identify if there's a new pattern or decision worth persisting to the memory journal. Present your findings and ask before persisting.
 
 ### 📖 Reading Reference Docs by Trigger
 
