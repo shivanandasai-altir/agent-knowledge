@@ -164,6 +164,11 @@ def _parse_details(details: str, fields: dict) -> None:
             fields["Wiki files"] = m.group(1).strip()
             continue
 
+        m = re.match(r"<sup>Tags:\s*(.*?)</sup>", part)
+        if m:
+            fields["Tags"] = m.group(1).strip()
+            continue
+
 
 # ── Rendering ──────────────────────────────────────────────────────────────
 
@@ -187,6 +192,8 @@ def format_details(entry: dict) -> str:
         parts.append(f"<sup>Docs: {esc(f['Related docs'])}</sup>")
     if f.get("Wiki files"):
         parts.append(f"<sup>Wiki: {esc(f['Wiki files'])}</sup>")
+    if f.get("Tags"):
+        parts.append(f"<sup>Tags: {esc(f['Tags'])}</sup>")
 
     return "<br>".join(parts)
 
@@ -278,6 +285,7 @@ def action_add(data: dict) -> int:
     wiki_files = data.get("wikiFiles", [])
     source_files = data.get("sourceFiles", [])
     related_docs = data.get("relatedDocs", [])
+    tags = data.get("tags", "") or ""
 
     header, entries = _read_entries(fp)
 
@@ -318,6 +326,8 @@ def action_add(data: dict) -> int:
         entry["fields"]["Related docs"] = ", ".join(related_docs) if isinstance(related_docs, list) else str(related_docs)
     if supersedes:
         entry["fields"]["Supersedes"] = supersedes
+    if tags:
+        entry["fields"]["Tags"] = tags
 
     entries.insert(0, entry)
     _write_entries(fp, header, entries)
@@ -335,6 +345,7 @@ def action_update(data: dict) -> int:
     context = data.get("context", "")
     pattern = data.get("pattern", "")
     author = data.get("author", "")
+    tags = data.get("tags", "") or ""
 
     header, entries = _read_entries(fp)
 
@@ -349,6 +360,9 @@ def action_update(data: dict) -> int:
                 found = True
             if author:
                 e["fields"]["Author"] = author
+                found = True
+            if tags:
+                e["fields"]["Tags"] = tags
                 found = True
 
     if found:

@@ -63,6 +63,10 @@ fi
 
 echo "$INPUT" | python3 "$MEMORY_LIB"
 
+# ── Rebuild Memory Index ───────────────────────────────────────────────────
+
+"$SCRIPT_DIR/memory-search" --rebuild-index 2>/dev/null || true
+
 # ── Push (optional) ───────────────────────────────────────────────────────
 
 if [ "$PUSH" = "1" ] && [ "$ACTION" != "list" ]; then

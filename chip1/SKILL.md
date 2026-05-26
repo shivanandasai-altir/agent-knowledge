@@ -23,11 +23,14 @@ It works with **pi**, **Claude Code**, and **Cursor** — all three read the sam
 # 1. Sync shared knowledge
 (cd ~/agent-knowledge && git pull --rebase)
 
-# 2. Read the journal
-cat ~/agent-knowledge/chip1/MEMORY.md
+# 2. Search the journal by task description
+~/agent-knowledge/chip1/memory-search "<describe your task>"
 
-# 3. Also search the graph wiki (inside chip1-webui)
-grep -ril "<feature>" ~/agent-knowledge/chip1/MEMORY.md .code-review-graph/wiki/
+# 3. Read top-matching entries from MEMORY.md
+less ~/agent-knowledge/chip1/MEMORY.md  # jump to matched entries
+
+# 4. Also search the graph wiki (inside chip1-webui)
+grep -ril "<feature>" .code-review-graph/wiki/
 ```
 
 ## When Discovering a New Convention or Decision
@@ -41,7 +44,8 @@ echo '{
   "pattern":"Use createDiff from @chip1/utils/helpers/diffPatch to compute minimal PATCH diffs",
   "supersedes":"Manual field-by-field comparison",
   "wikiFiles":["accountdetails-account.md"],
-  "relatedDocs":[".claude/docs/architecture-patterns.md"]
+  "relatedDocs":[".claude/docs/architecture-patterns.md"],
+  "tags":"PATCH, createDiff, diff, minimal-payload"
 }' | bash ~/agent-knowledge/chip1/update-memory.sh --push
 ```
 
@@ -50,7 +54,7 @@ echo '{
 | Operation | Description |
 |-----------|-------------|
 | `add` | Adds entry. If `supersedes` matches an active entry, marks old as `superseded`. If exact title+pattern exists, NOOPs. |
-| `update` | Updates context/pattern/wikiFiles/sourceFiles/relatedDocs of an existing entry. |
+| `update` | Updates context/pattern/wikiFiles/sourceFiles/relatedDocs/tags of an existing entry. |
 | `delete` | Marks entry as `archived` (kept in journal for history). |
 | `list` | Lists all entries grouped by status. |
 
@@ -81,7 +85,25 @@ Superseded by: Exact title of the entry that replaced this (optional)
 Wiki files: accountdetails-account.md (optional)
 Source files: apps/crm/src/features/AccountDetails/... (optional)
 Related docs: .claude/docs/architecture-patterns.md (optional)
+Tags: PATCH, createDiff, unset (optional, comma-separated, used by memory-search)
 ```
+
+## Searching Memory — `memory-search`
+
+A zero-dependency TF-IDF search tool. Parses MEMORY.md and ranks entries by relevance.
+
+```bash
+# Search by task description (returns top 5 matches)
+python3 ~/agent-knowledge/chip1/memory-search "user clears a date field but nothing saves"
+
+# List all tags grouped by frequency
+python3 ~/agent-knowledge/chip1/memory-search --list-tags
+
+# Regenerate the Memory Index section (auto-run by update-memory.sh)
+python3 ~/agent-knowledge/chip1/memory-search --rebuild-index
+```
+
+Output includes relevance score (0-1), a visual bar, tags, context, and pattern snippet.
 
 ## Extracting Memory from a PR
 

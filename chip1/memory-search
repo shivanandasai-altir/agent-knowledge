@@ -1,0 +1,436 @@
+#!/usr/bin/env python3
+"""
+memory-search — TF-IDF search over the project memory journal.
+
+Zero external dependencies. Uses Python stdlib only.
+Parses MEMORY.md and ranks entries by cosine similarity.
+
+Usage:
+    python3 memory-search "user clears a date field but nothing saves"
+    python3 memory-search "formik cascading onChange"
+    python3 memory-search --list-tags
+    python3 memory-search --rebuild-index
+
+Output:
+    Top 5 matching entries with relevance scores (0-1).
+
+When --rebuild-index is passed, regenerates the "## Memory Index" section
+in MEMORY.md (category groupings and per-entry tags).
+"""
+
+import sys
+import os
+import re
+import math
+import json
+from collections import Counter
+
+# ── Paths ──────────────────────────────────────────────────────────────────
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MEMORY_FILE = os.path.join(SCRIPT_DIR, "MEMORY.md")
+LIB_FILE = os.path.join(SCRIPT_DIR, "memory_lib.py")
+
+# ── Import memory_lib for parsing ─────────────────────────────────────────
+# We import by path to avoid needing PYTHONPATH setup
+
+def import_memory_lib():
+    """Import memory_lib.py by adding its directory to sys.path."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("memory_lib", LIB_FILE)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+# ── Tokenizer ──────────────────────────────────────────────────────────────
+
+STOP_WORDS = frozenset({
+    "a", "an", "the", "and", "or", "but", "in", "on", "at", "to", "for",
+    "of", "with", "by", "from", "as", "is", "was", "are", "were", "be",
+    "been", "being", "have", "has", "had", "do", "does", "did", "will",
+    "would", "could", "should", "may", "might", "shall", "can", "need",
+    "must", "not", "no", "nor", "so", "if", "then", "else", "than",
+    "that", "this", "these", "those", "it", "its", "they", "them", "their",
+    "we", "you", "your", "our", "my", "me", "us", "he", "she", "him",
+    "her", "his", "who", "whom", "which", "what", "when", "where", "why",
+    "how", "all", "each", "every", "both", "few", "more", "most", "other",
+    "some", "such", "only", "own", "same", "too", "very", "just", "also",
+    "about", "above", "after", "again", "against", "because", "before",
+    "between", "during", "into", "through", "under", "up", "out", "off",
+    "over", "down", "back", "around", "here", "there", "use", "using",
+    "used", "uses", "via", "per", "the", "and", "but", "for",
+})
+
+
+def tokenize(text: str) -> list[str]:
+    """Tokenize text into normalized non-stop-word tokens."""
+    if not text:
+        return []
+    # Lowercase, split on non-alphanumeric, keep multi-word terms
+    text = text.lower()
+    # Extract code snippets as single tokens
+    code_tokens = re.findall(r'`([^`]+)`', text)
+    # Remove backtick content from main text to avoid double-counting
+    text_clean = re.sub(r'`[^`]+`', '', text)
+    # Split remaining text
+    words = re.findall(r'[a-zA-Z][a-zA-Z0-9_.\-]*', text_clean)
+    # Add code tokens as-is (they carry semantic weight)
+    all_tokens = words + code_tokens
+    return [t for t in all_tokens if len(t) > 1 and t not in STOP_WORDS]
+
+
+def compute_tf(tokens: list[str]) -> Counter:
+    """Compute term frequency for a document."""
+    return Counter(tokens)
+
+
+def compute_idf(entries: list[dict]) -> dict[str, float]:
+    """Compute inverse document frequency across all entries."""
+    N = len(entries)
+    if N == 0:
+        return {}
+    doc_freq: Counter = Counter()
+    for entry in entries:
+        unique_terms = set(tokenize(entry["search_text"]))
+        for term in unique_terms:
+            doc_freq[term] += 1
+    return {term: math.log((N + 1) / (freq + 1)) + 1 for term, freq in doc_freq.items()}
+
+
+def cosine_similarity(vec_a: Counter, vec_b: Counter) -> float:
+    """Compute cosine similarity between two sparse vectors."""
+    dot = sum(vec_a[t] * vec_b.get(t, 0) for t in vec_a)
+    mag_a = math.sqrt(sum(v * v for v in vec_a.values()))
+    mag_b = math.sqrt(sum(v * v for v in vec_b.values()))
+    if mag_a == 0 or mag_b == 0:
+        return 0.0
+    return dot / (mag_a * mag_b)
+
+
+# ── Entry enrichment ──────────────────────────────────────────────────────
+
+def enrich_entry(entry: dict) -> dict:
+    """Build the search_text field by concatenating title, context, pattern, and tags."""
+    fields = entry.get("fields", {})
+    parts = [
+        entry.get("title", ""),
+        fields.get("Context", ""),
+        fields.get("Pattern", ""),
+        fields.get("Tags", ""),
+    ]
+    entry["search_text"] = " ".join(p for p in parts if p)
+    return entry
+
+
+def categorize_entry(entry: dict) -> str:
+    """Assign a category to an entry based on its tags and title."""
+    title = entry.get("title", "").lower()
+    tags = entry.get("fields", {}).get("Tags", "").lower()
+
+    # PATCH / API mutations
+    if "patch" in title or "createDiff" in tags or "diff" in title:
+        return "PATCH / API Mutations"
+
+    # Data fetching / React Query
+    if "usequery" in title or "fetching" in tags or "reactquery" in tags or "enabled" in tags:
+        return "Data Fetching / React Query"
+
+    # Formik / Forms
+    if "formik" in title or "formik" in tags:
+        return "Formik / Forms"
+
+    # TanStack Table
+    if "table" in tags or "cells" in tags or "getsimplecells" in title or "skeleton" in title or "binding" in title or "table" in title:
+        return "TanStack Table"
+
+    # Filter system
+    if "filter" in tags:
+        return "Filter System"
+
+    # State / Zustand
+    if "zustand" in tags or "store" in tags:
+        return "State / Zustand"
+
+    # TypeScript
+    if "typescript" in tags or "tsconfig" in tags or "path-alias" in tags:
+        return "TypeScript / Config"
+
+    # Routing / Permissions
+    if "routing" in tags or "permissions" in tags or "nav-link" in tags:
+        return "Routing / Permissions"
+
+    # API Services
+    if "api" in tags and "factory" in tags:
+        return "API Services"
+
+    # Code Organization
+    if "code-organization" in tags or "destructuring" in tags:
+        return "Code Organization"
+
+    # Types
+    if "types" in tags and ("cross-app" in tags or "transactional" in tags):
+        return "Types"
+
+    # Infinite queries / Lists
+    if "infinite-query" in tags:
+        return "Infinite Queries / Lists"
+
+    # Selection / UI
+    if "selection" in tags or "action-bar" in tags:
+        return "Selection / UI"
+
+    return "Other"
+
+
+# ── Search ─────────────────────────────────────────────────────────────────
+
+def search(query: str, entries: list[dict], top_k: int = 5) -> list[dict]:
+    """Search entries by TF-IDF cosine similarity."""
+    query_tokens = tokenize(query)
+    if not query_tokens:
+        return []
+    query_tf = compute_tf(query_tokens)
+
+    idf = compute_idf(entries)
+    query_vec = Counter({t: query_tf[t] * idf.get(t, 1) for t in query_tf})
+
+    scored = []
+    for entry in entries:
+        doc_tokens = tokenize(entry["search_text"])
+        doc_tf = compute_tf(doc_tokens)
+        doc_vec = Counter({t: doc_tf[t] * idf.get(t, 1) for t in doc_tf})
+        score = cosine_similarity(query_vec, doc_vec)
+        if score > 0:
+            scored.append((score, entry))
+
+    scored.sort(key=lambda x: -x[0])
+    return [
+        {
+            "score": round(score, 4),
+            "date": entry["date"],
+            "title": entry["title"],
+            "tags": entry.get("fields", {}).get("Tags", ""),
+            "context": entry.get("fields", {}).get("Context", ""),
+            "pattern": entry.get("fields", {}).get("Pattern", ""),
+        }
+        for score, entry in scored[:top_k]
+    ]
+
+
+# ── Output ─────────────────────────────────────────────────────────────────
+
+def format_results(results: list[dict]) -> str:
+    """Format search results for terminal output."""
+    if not results:
+        return "  (no matches found)"
+
+    out = []
+    for i, r in enumerate(results):
+        bar = "=" * (int(r["score"] * 40))
+        out.append(f"\n  [{i + 1}] {r['title']}")
+        out.append(f"      score: {r['score']:.4f}  {bar}")
+        out.append(f"      date:  {r['date']}")
+        if r["tags"]:
+            out.append(f"      tags:  {r['tags']}")
+        if r["context"]:
+            ctx = r["context"][:120] + ("..." if len(r["context"]) > 120 else "")
+            out.append(f"      why:   {ctx}")
+        if r["pattern"]:
+            pat = r["pattern"][:120] + ("..." if len(r["pattern"]) > 120 else "")
+            out.append(f"      how:   {pat}")
+    return "\n".join(out)
+
+
+# ── Index rebuild (for MEMORY.md restructure) ────────────────────────────
+
+CATEGORY_ORDER = [
+    "PATCH / API Mutations",
+    "Data Fetching / React Query",
+    "Formik / Forms",
+    "TanStack Table",
+    "Filter System",
+    "State / Zustand",
+    "TypeScript / Config",
+    "Routing / Permissions",
+    "API Services",
+    "Code Organization",
+    "Types",
+    "Infinite Queries / Lists",
+    "Selection / UI",
+    "Other",
+]
+
+
+def build_memory_index(entries: list[dict]) -> str:
+    """Generate a Memory Index section for MEMORY.md from parsed entries."""
+    categorized: dict[str, list[dict]] = {}
+    for entry in entries:
+        cat = categorize_entry(entry)
+        categorized.setdefault(cat, []).append(entry)
+
+    lines = [
+        "## Memory Index",
+        "",
+        "Searchable categories. Each entry also has `<sup>Tags: ...</sup>` for finer-grained lookup.",
+        "",
+        "| Category | Entries |",
+        "|----------|---------|",
+    ]
+
+    for cat in CATEGORY_ORDER:
+        if cat in categorized:
+            titles = ", ".join(e["title"] for e in categorized[cat])
+            lines.append(f"| **{cat}** | {titles} |")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+# ── Main ───────────────────────────────────────────────────────────────────
+
+def parse_entries_from_file(filepath: str, lib) -> list[dict]:
+    """Parse entries from MEMORY.md using memory_lib."""
+    with open(filepath, "r", encoding="utf-8") as f:
+        content = f.read()
+    lines = content.split("\n")
+    header = lib.parse_header(lines)
+    entries = lib.parse_entries(lines)
+
+    # Remove archived entries (they're historical, not actionable)
+    active = [e for e in entries if e.get("fields", {}).get("Status", "active") not in ("archived",)]
+    for e in active:
+        enrich_entry(e)
+    return active, header
+
+
+def cmd_search(args: list[str], lib) -> int:
+    """Run a search query."""
+    query = " ".join(args)
+    if not query:
+        print("Usage: memory-search <query>")
+        print("   or: memory-search --list-tags")
+        print("   or: memory-search --rebuild-index")
+        return 1
+
+    active, _ = parse_entries_from_file(MEMORY_FILE, lib)
+    if not active:
+        print("  (no entries found)")
+        return 0
+
+    results = search(query, active)
+    print(format_results(results))
+    return 0
+
+
+def cmd_list_tags(args: list[str], lib) -> int:
+    """List all unique tags across entries."""
+    active, _ = parse_entries_from_file(MEMORY_FILE, lib)
+    all_tags: Counter = Counter()
+    for e in active:
+        tags_str = e.get("fields", {}).get("Tags", "")
+        if tags_str:
+            for tag in tags_str.split(","):
+                tag = tag.strip()
+                if tag:
+                    all_tags[tag] += 1
+
+    print("## Tags by frequency")
+    for tag, count in all_tags.most_common():
+        print(f"  {tag:30s}  ({count} entries)")
+    return 0
+
+
+def cmd_rebuild_index(args: list[str], lib) -> int:
+    """Regenerate the Memory Index section in MEMORY.md."""
+    active, header = parse_entries_from_file(MEMORY_FILE, lib)
+    index_text = build_memory_index(active)
+
+    # Read current file content
+    with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    lines = content.split("\n")
+
+    # Find where the header ends (first ## section heading after header)
+    table_start = None
+    for i, line in enumerate(lines):
+        if re.match(r"^##\s+(Active|Archived|Entries|Decisions)", line.strip()):
+            table_start = i
+            break
+
+    if table_start is None:
+        print("ERROR: Could not find '## Active Decisions' in MEMORY.md", file=sys.stderr)
+        return 1
+
+    # Check if Memory Index already exists
+    index_start = None
+    index_end = None
+    for i, line in enumerate(lines):
+        if line.strip() == "## Memory Index":
+            index_start = i
+        if index_start is not None and index_end is None:
+            # Find the end of the index: next ## heading or end-of-file
+            if line.strip() == "" and i > index_start + 1:
+                # Blank line after index heading — look ahead for next ## section
+                for j in range(i, len(lines)):
+                    if re.match(r"^##", lines[j].strip()):
+                        index_end = j
+                        break
+                if index_end is None:
+                    index_end = len(lines)  # end of file
+                break
+
+    if index_start is not None and index_end is not None:
+        # Replace existing index — everything before old index, new index, everything after
+        before_index = lines[:index_start]
+        after_index = lines[index_end:]
+        new_lines = before_index + [index_text] + after_index
+    else:
+        # Insert index before ## Active Decisions, right after the header
+        before_index = lines[:table_start]
+        after_index = lines[table_start:]
+        # Find the last blank line in header
+        blank_idx = len(before_index) - 1
+        while blank_idx > 0 and before_index[blank_idx].strip() != "":
+            blank_idx -= 1
+
+        header_part = before_index[:blank_idx]
+        new_lines = header_part + [""] + [index_text] + [""] + after_index
+
+    with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+        f.write("\n".join(new_lines))
+
+    print("Index regenerated in MEMORY.md")
+    return 0
+
+
+def main() -> int:
+    if not os.path.exists(MEMORY_FILE):
+        print(f"ERROR: MEMORY.md not found at {MEMORY_FILE}", file=sys.stderr)
+        return 1
+
+    lib = import_memory_lib()
+
+    args = sys.argv[1:]
+    if not args:
+        print("Usage: memory-search <query>")
+        print("   or: memory-search --list-tags")
+        print("   or: memory-search --rebuild-index")
+        return 1
+
+    command = args[0]
+    rest = args[1:]
+
+    if command == "--list-tags":
+        return cmd_list_tags(rest, lib)
+    elif command == "--rebuild-index":
+        return cmd_rebuild_index(rest, lib)
+    elif command.startswith("--"):
+        print(f"ERROR: Unknown flag '{command}'", file=sys.stderr)
+        return 1
+    else:
+        return cmd_search(args, lib)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
