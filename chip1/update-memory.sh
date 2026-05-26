@@ -212,8 +212,25 @@ if source_files:
 if related_docs:
   block += f"\nRelated docs: {related_docs}"
 
-lines.append("")
-lines.append(block)
+# Insert at the top of ## Entries (newest first)
+entries_header_idx = None
+for i, line in enumerate(lines):
+    if line.strip() == "## Entries":
+        entries_header_idx = i
+        break
+
+if entries_header_idx is not None:
+    # Find the first entry line after the header
+    insert_idx = entries_header_idx + 1
+    while insert_idx < len(lines) and lines[insert_idx].strip() == "":
+        insert_idx += 1
+    # Insert new block before the first existing entry
+    lines.insert(insert_idx, block)
+    lines.insert(insert_idx, "")
+else:
+    # Fallback: append at end
+    lines.append("")
+    lines.append(block)
 
 with open(filepath, "w", encoding="utf-8") as f:
   f.write("\n".join(lines))

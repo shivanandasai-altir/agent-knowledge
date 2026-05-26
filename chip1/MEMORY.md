@@ -8,111 +8,13 @@ This file is the chronological, write-time-intelligence journal of conventions, 
 
 ## Entries
 
-### 2026-05-26 — Adopt `getSimpleCells` for table column definitions
-Status: active
-Context: Raw `TableCell` / `SingleLineCell` usage requires manual dash fallback, cssVarId wiring, and flex layout. Repeated boilerplate in every columnsDefs file.
-Pattern: Use `getSimpleCells<TRow>()` from `@chip1/components/table/getSimpleCells` for all plain data cells. Declare at module scope. See `.claude/docs/simple-cells.md`.
 
-### 2026-05-26 — Formik cascading via async onChange over useEffect
-Status: active
-Context: useEffect with query-derived deps re-fires on every React Query background refetch, silently overwriting user edits in forms that are open for 5-10 minutes.
-Pattern: Use async onChange handlers with `ensureSafeQueryData` from `@chip1/utils/safeQueryClient` for cascading fields. Include a stale-response guard with useRef. Never use useEffect for cascading. See `.claude/docs/formik-patterns.md`.
-
-### 2026-05-26 — FormikForm defaults to enableReinitialize=false
-Status: active
-Context: React Query refetches return new object references. enableReinitialize=true causes Formik to silently discard user edits.
-Pattern: Key the component on entity ID instead: `<FormikForm key={entity.id} initialValues={...} />`. See `.claude/docs/formik-patterns.md`.
-
-### 2026-05-26 — PATCH mutations must use createDiff
-Status: active
-Context: Sending full objects in PATCH causes backend validations on unrelated field groups.
-Pattern: Use `createDiff` from `@chip1/utils/helpers/diffPatch` to compute minimal diffs. Skip mutation when nothing changed. See `.claude/docs/architecture-patterns.md`.
-
-### 2026-05-26 — PATCH write-only fields passed outside diff
-Status: active
-Supersedes: PATCH mutations must use createDiff
-Context: Fields like `timelineNote` and `reason` are write-only (not returned by server). Putting them inside the diff causes data-loss since they're absent in original.
-Pattern: Pass write-only fields outside createDiff: `{ ...diff.changed, ...(reason ? { reason } : {}) }`. See `.claude/docs/architecture-patterns.md`.
-
-### 2026-05-26 — Zustand context stores use createZustandContext
-Status: active
-Context: Raw React Context + Zustand requires manual boilerplate for provider, hook typing, and dependency tracking.
-Pattern: Use `createZustandContext` from `@chip1/utils/zustandContext`. Provider accepts `createStore` + optional `dependencies`. See `.claude/docs/architecture-patterns.md`.
-
-### 2026-05-26 — Persistent sorting uses bindSortProvider
-Status: superseded
-Superseded by: Use entity-specific sort storage keys
-Context: Duplicated sort-state management across list pages with no persistence.
-Pattern: Use `bindSortProvider<TSortEnum>(storageKey, defaultSort)` with unique storage keys per entity. See `.claude/docs/architecture-patterns.md`.
-
-### 2026-05-26 — Selection-dependent actions in SelectionActionBar, not FAB
-Status: active
-Context: Selection-dependent FAB items have discoverability problems, disabled-state confusion, and cross-tab leakage.
-Pattern: Move selection-dependent actions to `<SelectionActionBar />` (table footer overlay). Gate tab-specific actions by mounting in the tab, not by checking pathname. See `.claude/docs/selection-action-bar.md`.
-
-### 2026-05-26 — Table loading uses initial skeleton, not inline spinner
-Status: active
-Context: Inline spinners during initial table load look broken. Route-level Suspense was inconsistent.
-Pattern: Use `useShouldShowInitialTableSkeleton(query)` with `MuiTableSkeleton` on initial load. Don't replace rendered data with skeleton during refetches. See `.claude/docs/table-loading-patterns.md`.
-
-### 2026-05-26 — Filters use createFilterBarWrapper at module scope
-Status: active
-Context: Filter wrappers created during render cause unstable hook references and re-renders.
-Pattern: Use `createFilterBarWrapper(useFilterHook)` at module level. For dynamic filter hooks, create separate stable wrapper components. See `.claude/docs/filter-system.md`.
-
-### 2026-05-26 — Filter store defaults omit explicit nulls
-Status: active
-Context: Explicit nulls for every field add noise and are redundant — undefined and null are equivalent for Zustand stores.
-Pattern: Only specify non-null defaults: `const DEFAULT_FILTER: TFilter = { isActive: true }`. See `.claude/docs/filter-system.md` and `.claude/docs/code-redundancy.md`.
-
-### 2026-05-26 — Validation schema defaults replace manual initialValues fallbacks
-Status: active
-Context: FormikForm casts initialValues through Yup schema. Schema defaults (`.default('')`, `.default(null)`) apply automatically.
-Pattern: Pass entities directly to initialValues — schema handles the rest. No manual null/empty fallbacks. See `.claude/docs/code-redundancy.md`.
-
-### 2026-05-26 — VM functions receive whole objects, not destructured fields
-Status: active
-Context: Destructuring at call sites couples callers to VM function internals; adding fields requires updating all call sites.
-Pattern: Pass the whole entity to VM functions: `toShipmentVm(shipment)` not `toShipmentVm({ id, name, status })`. See `.claude/docs/code-redundancy.md`.
-
-### 2026-05-26 — Shared API domains use factory pattern in @chip1/core
-Status: active
-Context: API logic duplicated across apps when a domain must be used by CRM and myChip1.
-Pattern: Implement as factory in `packages/core/api/<domain>.ts` accepting interceptors. Each app instantiates and re-exports. See `.claude/docs/architecture-patterns.md`.
-
-### 2026-05-26 — Shared infinite queries use factory pattern
-Status: active
-Context: Infinite-scroll list queries duplicated across apps with different service instances.
-Pattern: Export factory from `@chip1/core/features/<domain>/`. Apps call with own service function. Export `<DOMAIN>_LIST_BASE_KEY` for cache invalidation. See `.claude/docs/architecture-patterns.md`.
-
-### 2026-05-26 — Cross-app types live in @chip1/core/types/transactional.ts
-Status: active
-Context: User, contact, and part-attribute types redeclared in each app's types/common.ts, diverging over time.
-Pattern: Import `TTransactionalAccountUser<R>`, `TTransactionalAccountContact`, `TCommonPartAttributes` from `@chip1/core/types/transactional`. See `.claude/docs/architecture-patterns.md`.
-
-### 2026-05-26 — Namespace TS6 path aliases without baseUrl
-Status: active
-Context: TS6 deprecates baseUrl. Path aliases that relied on baseUrl are broken.
-Pattern: Use explicit relative paths: `"@/*": ["./src/*"]`. No baseUrl. See `.claude/docs/ts6-conventions.md`.
-
-### 2026-05-26 — MC1 nav-link gates require both feature flag and permission check
-Status: active
-Context: Feature flag alone doesn't prevent tenant-level access. Permission endpoint alone doesn't prevent route registration.
-Pattern: Use `requiresPageAccess` on TNavLink + `usePageAccess(path)` guard in page component. Both gates required. See `.claude/docs/app-specific-patterns.md`.
-
-
-### 2026-05-27 — Always run pnpm check:typescript before committing
+### 2026-05-27 — Test entry — verify insert order
 Status: archived
-Context: Type errors must be caught before commit
-Pattern: Run pnpm check:typescript before every commit
-
-### 2026-05-27 — Temporary test entry
-Status: archived
-Archived by: kpanchal-altir (via PR #4099)
-Author: kpanchal-altir (via PR #4099)
-Context: Testing the author audit trail feature
-Pattern: This is a test — will delete immediately
-
+Archived by: test
+Author: test
+Context: Testing that new entries appear before old ones
+Pattern: New entries should be at top of ## Entries
 ### 2026-05-27 — Prevent useQuery from firing with empty-string IDs for optional relationships
 Status: active
 Author: kpanchal-altir (via PR #4099)
@@ -120,3 +22,107 @@ Context: In StockDetailsIsland.tsx:50-53, when a stock has no PO line, `stock.po
 Pattern: When querying related entities through optional/conditional relationships, use the `enabled` option to prevent firing queries when IDs are absent. Never use `?? ""` (empty-string fallback) for query parameters that depend on optional nested relationships.
 Source files: apps/crm/src/features/StockDetails/StockDetailsTab/StockDetailsIsland.tsx
 Related docs: .claude/docs/architecture-patterns.md
+### 2026-05-27 — Temporary test entry
+Status: archived
+Archived by: kpanchal-altir (via PR #4099)
+Author: kpanchal-altir (via PR #4099)
+Context: Testing the author audit trail feature
+Pattern: This is a test — will delete immediately
+
+### 2026-05-27 — Always run pnpm check:typescript before committing
+Status: archived
+Context: Type errors must be caught before commit
+Pattern: Run pnpm check:typescript before every commit
+
+### 2026-05-26 — MC1 nav-link gates require both feature flag and permission check
+Status: active
+Context: Feature flag alone doesn't prevent tenant-level access. Permission endpoint alone doesn't prevent route registration.
+Pattern: Use `requiresPageAccess` on TNavLink + `usePageAccess(path)` guard in page component. Both gates required. See `.claude/docs/app-specific-patterns.md`.
+
+
+### 2026-05-26 — Namespace TS6 path aliases without baseUrl
+Status: active
+Context: TS6 deprecates baseUrl. Path aliases that relied on baseUrl are broken.
+Pattern: Use explicit relative paths: `"@/*": ["./src/*"]`. No baseUrl. See `.claude/docs/ts6-conventions.md`.
+
+### 2026-05-26 — Cross-app types live in @chip1/core/types/transactional.ts
+Status: active
+Context: User, contact, and part-attribute types redeclared in each app's types/common.ts, diverging over time.
+Pattern: Import `TTransactionalAccountUser<R>`, `TTransactionalAccountContact`, `TCommonPartAttributes` from `@chip1/core/types/transactional`. See `.claude/docs/architecture-patterns.md`.
+
+### 2026-05-26 — Shared infinite queries use factory pattern
+Status: active
+Context: Infinite-scroll list queries duplicated across apps with different service instances.
+Pattern: Export factory from `@chip1/core/features/<domain>/`. Apps call with own service function. Export `<DOMAIN>_LIST_BASE_KEY` for cache invalidation. See `.claude/docs/architecture-patterns.md`.
+
+### 2026-05-26 — Shared API domains use factory pattern in @chip1/core
+Status: active
+Context: API logic duplicated across apps when a domain must be used by CRM and myChip1.
+Pattern: Implement as factory in `packages/core/api/<domain>.ts` accepting interceptors. Each app instantiates and re-exports. See `.claude/docs/architecture-patterns.md`.
+
+### 2026-05-26 — VM functions receive whole objects, not destructured fields
+Status: active
+Context: Destructuring at call sites couples callers to VM function internals; adding fields requires updating all call sites.
+Pattern: Pass the whole entity to VM functions: `toShipmentVm(shipment)` not `toShipmentVm({ id, name, status })`. See `.claude/docs/code-redundancy.md`.
+
+### 2026-05-26 — Validation schema defaults replace manual initialValues fallbacks
+Status: active
+Context: FormikForm casts initialValues through Yup schema. Schema defaults (`.default('')`, `.default(null)`) apply automatically.
+Pattern: Pass entities directly to initialValues — schema handles the rest. No manual null/empty fallbacks. See `.claude/docs/code-redundancy.md`.
+
+### 2026-05-26 — Filter store defaults omit explicit nulls
+Status: active
+Context: Explicit nulls for every field add noise and are redundant — undefined and null are equivalent for Zustand stores.
+Pattern: Only specify non-null defaults: `const DEFAULT_FILTER: TFilter = { isActive: true }`. See `.claude/docs/filter-system.md` and `.claude/docs/code-redundancy.md`.
+
+### 2026-05-26 — Filters use createFilterBarWrapper at module scope
+Status: active
+Context: Filter wrappers created during render cause unstable hook references and re-renders.
+Pattern: Use `createFilterBarWrapper(useFilterHook)` at module level. For dynamic filter hooks, create separate stable wrapper components. See `.claude/docs/filter-system.md`.
+
+### 2026-05-26 — Table loading uses initial skeleton, not inline spinner
+Status: active
+Context: Inline spinners during initial table load look broken. Route-level Suspense was inconsistent.
+Pattern: Use `useShouldShowInitialTableSkeleton(query)` with `MuiTableSkeleton` on initial load. Don't replace rendered data with skeleton during refetches. See `.claude/docs/table-loading-patterns.md`.
+
+### 2026-05-26 — Selection-dependent actions in SelectionActionBar, not FAB
+Status: active
+Context: Selection-dependent FAB items have discoverability problems, disabled-state confusion, and cross-tab leakage.
+Pattern: Move selection-dependent actions to `<SelectionActionBar />` (table footer overlay). Gate tab-specific actions by mounting in the tab, not by checking pathname. See `.claude/docs/selection-action-bar.md`.
+
+### 2026-05-26 — Persistent sorting uses bindSortProvider
+Status: superseded
+Superseded by: Use entity-specific sort storage keys
+Context: Duplicated sort-state management across list pages with no persistence.
+Pattern: Use `bindSortProvider<TSortEnum>(storageKey, defaultSort)` with unique storage keys per entity. See `.claude/docs/architecture-patterns.md`.
+
+### 2026-05-26 — Zustand context stores use createZustandContext
+Status: active
+Context: Raw React Context + Zustand requires manual boilerplate for provider, hook typing, and dependency tracking.
+Pattern: Use `createZustandContext` from `@chip1/utils/zustandContext`. Provider accepts `createStore` + optional `dependencies`. See `.claude/docs/architecture-patterns.md`.
+
+### 2026-05-26 — PATCH write-only fields passed outside diff
+Status: active
+Supersedes: PATCH mutations must use createDiff
+Context: Fields like `timelineNote` and `reason` are write-only (not returned by server). Putting them inside the diff causes data-loss since they're absent in original.
+Pattern: Pass write-only fields outside createDiff: `{ ...diff.changed, ...(reason ? { reason } : {}) }`. See `.claude/docs/architecture-patterns.md`.
+
+### 2026-05-26 — PATCH mutations must use createDiff
+Status: active
+Context: Sending full objects in PATCH causes backend validations on unrelated field groups.
+Pattern: Use `createDiff` from `@chip1/utils/helpers/diffPatch` to compute minimal diffs. Skip mutation when nothing changed. See `.claude/docs/architecture-patterns.md`.
+
+### 2026-05-26 — FormikForm defaults to enableReinitialize=false
+Status: active
+Context: React Query refetches return new object references. enableReinitialize=true causes Formik to silently discard user edits.
+Pattern: Key the component on entity ID instead: `<FormikForm key={entity.id} initialValues={...} />`. See `.claude/docs/formik-patterns.md`.
+
+### 2026-05-26 — Formik cascading via async onChange over useEffect
+Status: active
+Context: useEffect with query-derived deps re-fires on every React Query background refetch, silently overwriting user edits in forms that are open for 5-10 minutes.
+Pattern: Use async onChange handlers with `ensureSafeQueryData` from `@chip1/utils/safeQueryClient` for cascading fields. Include a stale-response guard with useRef. Never use useEffect for cascading. See `.claude/docs/formik-patterns.md`.
+
+### 2026-05-26 — Adopt `getSimpleCells` for table column definitions
+Status: active
+Context: Raw `TableCell` / `SingleLineCell` usage requires manual dash fallback, cssVarId wiring, and flex layout. Repeated boilerplate in every columnsDefs file.
+Pattern: Use `getSimpleCells<TRow>()` from `@chip1/components/table/getSimpleCells` for all plain data cells. Declare at module scope. See `.claude/docs/simple-cells.md`.
