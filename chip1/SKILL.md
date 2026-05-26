@@ -83,6 +83,43 @@ Source files: apps/crm/src/features/AccountDetails/... (optional)
 Related docs: .claude/docs/architecture-patterns.md (optional)
 ```
 
+## Extracting Memory from a PR
+
+When the user says "extract memory from PR #N" or pastes a GitHub PR link:
+
+```bash
+# 1. Fetch PR details (uses gh CLI)
+bash ~/agent-knowledge/chip1/pr-memory.sh <PR-NUMBER>
+```
+
+This outputs: PR title, description, files changed, review comments.
+
+**Analyze the output for:**
+- New conventions or patterns introduced in the PR
+- Architecture decisions that were discussed or decided
+- Deprecated patterns — things this PR explicitly moves away from
+- Important constraints discovered during the change
+
+**Then for each finding:**
+
+```bash
+# 2. Present to the user and ask which to persist
+# 3. For each confirmed item:
+echo '{"action":"add","title":"...","context":"...","pattern":"..."}' \
+  | bash ~/agent-knowledge/chip1/update-memory.sh --push
+```
+
+Example workflow:
+```
+User: extract memory from PR #4021
+Agent: runs pr-memory.sh 4021
+       reads the output
+       identifies "Use SelectionActionBar instead of FAB for bulk actions"
+       asks user: "Found 3 potential conventions. Persist all?"
+       user confirms
+       runs update-memory.sh --push for each
+```
+
 ## Keeping Docs in Sync
 
 The reference docs in `chip1/docs/` are mirrored from `chip1-webui/.claude/docs/`.
