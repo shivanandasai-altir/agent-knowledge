@@ -105,6 +105,41 @@ python3 ~/agent-knowledge/chip1/memory-search "formik cascading fields onChange"
 python3 ~/agent-knowledge/chip1/memory-search --list-tags
 ```
 
+### Cross-project search (inherit patterns from sibling projects)
+
+When starting a new project or exploring unfamiliar patterns, include results from established sibling projects:
+
+```bash
+# From chip1-mobile, search your own journal + include chip1 patterns
+python3 ~/agent-knowledge/chip1-mobile/memory-search --include chip1 "PATCH mutation"
+
+# Results from chip1 are labeled with "project: chip1"
+# Results from the primary project show dates instead
+
+# Include multiple projects
+python3 ~/agent-knowledge/chip1-mobile/memory-search \
+  --include chip1 --include chip1-analytics "pattern"
+
+# From chip1, search a different primary project
+python3 ~/agent-knowledge/chip1/memory-search --project chip1-mobile --include chip1 "API"
+```
+
+### Bootstrapping a new project
+
+```bash
+bash ~/agent-knowledge/chip1/new-project.sh chip1-mobile
+```
+
+Creates the project directory with symlinks to shared scripts. Push it:
+
+```bash
+cd ~/agent-knowledge && git add chip1-mobile && git commit -m "chip1-mobile: bootstrap" && git push
+```
+
+#### 🗣️ Prompt
+
+> Bootstrap a new project called chip1-mobile in agent-knowledge, then push it. Also add a CLAUDE.md trigger pointing at it.
+
 ### Add a decision
 
 ```bash

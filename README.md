@@ -52,10 +52,23 @@ python3 chip1/memory-search "PATCH mutations clearing a date field"
 #       how: Forward diff.unset alongside diff.changed...
 ```
 
-Search a different project (future: `chip1-mobile`):
+Search a different project:
 
 ```bash
 python3 chip1/memory-search --project chip1-mobile "push notification"
+```
+
+Cross-project search — inherit patterns from sibling projects:
+
+```bash
+# When working on chip1-mobile, also show relevant patterns from chip1
+python3 chip1/memory-search --project chip1-mobile --include chip1 "PATCH mutation"
+
+# Results from chip1 are labeled with "project: chip1"
+# Results from chip1-mobile show the date instead
+
+# Include multiple sibling projects
+python3 chip1/memory-search --project chip1-mobile --include chip1 --include chip1-analytics "pattern"
 ```
 
 Other useful searches:
@@ -134,6 +147,31 @@ Or after fixing a bug that revealed a pattern you want captured:
 When targeting a different project:
 
 > Persist this decision to the chip1-mobile project memory journal. Include project: chip1-mobile in the JSON.
+
+#### 🗣️ Cross-project search prompts
+
+> I'm new to chip1-mobile. Search its memory journal and also include chip1 patterns so I can see what conventions already exist.
+
+> Search chip1-mobile for 'push notification' and include relevant results from chip1 too.
+
+> Bootstrap a new project called chip1-analytics and seed it with cross-project patterns from chip1.
+
+### ⚡ Bootstrapping a New Project
+
+When adding a new project to the organization, create its memory directory with shared tooling:
+
+```bash
+bash ~/agent-knowledge/chip1/new-project.sh chip1-mobile
+```
+
+This creates `~/agent-knowledge/chip1-mobile/` with:
+- **Symlinks** to shared scripts (`update-memory.sh`, `memory-search`, `memory_lib.py`, `pr-memory.sh`) — updates to the tooling propagate automatically
+- **Template MEMORY.md** with a seed entry encouraging cross-project search
+- **Template SKILL.md** tailored to the project
+
+#### 🗣️ Prompt
+
+> I need to add a new project called chip1-mobile to the agent-knowledge system. Use new-project.sh to bootstrap it, then push. Also update chip1-webui's CLAUDE.md with a trigger pointing at it.
 
 ### 📤 Extracting Decisions from a GitHub PR
 

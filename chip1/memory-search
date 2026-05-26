@@ -220,9 +220,23 @@ def search(query: str, entries: list[dict], top_k: int = 5) -> list[dict]:
     ]
 
 
+def search_project(query: str, project_name: str, lib, top_k: int = 5) -> list[dict]:
+    """Search a specific project's memory and return labeled results."""
+    mem_file = os.path.join(ROOT_DIR, project_name, "MEMORY.md")
+    if not os.path.exists(mem_file):
+        return []
+    active, _ = parse_entries_from_file(mem_file, lib)
+    if not active:
+        return []
+    results = search(query, active, top_k)
+    for r in results:
+        r["project"] = project_name
+    return results
+
+
 # ── Output ─────────────────────────────────────────────────────────────────
 
-def format_results(results: list[dict]) -> str:
+def format_results(results: list[dict], show_project: bool = False) -> str:
     """Format search results for terminal output."""
     if not results:
         return "  (no matches found)"
@@ -232,7 +246,11 @@ def format_results(results: list[dict]) -> str:
         bar = "=" * (int(r["score"] * 40))
         out.append(f"\n  [{i + 1}] {r['title']}")
         out.append(f"      score: {r['score']:.4f}  {bar}")
-        out.append(f"      date:  {r['date']}")
+        label = r.get("project", "")
+        if label:
+            out.append(f"      project: {label}")
+        else:
+            out.append(f"      date:  {r['date']}")
         if r["tags"]:
             out.append(f"      tags:  {r['tags']}")
         if r["context"]:
@@ -306,22 +324,42 @@ def parse_entries_from_file(filepath: str, lib) -> list[dict]:
     return active, header
 
 
-def cmd_search(args: list[str], lib) -> int:
-    """Run a search query."""
+def cmd_search(args: list[str], lib, included_projects=None) -> int:
+    """Run a search query, optionally including results from sibling projects."""
     query = " ".join(args)
     if not query:
-        print("Usage: memory-search [--project <name>] <query>")
+        print("Usage: memory-search [--project <name>] [--include <project>...] <query>")
         print("   or: memory-search [--project <name>] --list-tags")
         print("   or: memory-search [--project <name>] --rebuild-index")
         return 1
 
+    # Search the primary project
     active, _ = parse_entries_from_file(MEMORY_FILE, lib)
-    if not active:
-        print("  (no entries found)")
+    all_results = []
+    if active:
+        results = search(query, active)
+        all_results.extend(results)
+
+    # Search included sibling projects
+    included_projects = included_projects or []
+    for inc_project in included_projects:
+        if inc_project == PROJECT:
+            continue  # skip self
+        inc_results = search_project(query, inc_project, lib, top_k=3)
+        all_results.extend(inc_results)
+
+    if not all_results:
+        print("  (no matches found)")
         return 0
 
-    results = search(query, active)
-    print(format_results(results))
+    # Merge and sort by score
+    all_results.sort(key=lambda r: -r["score"])
+    show_project = len(included_projects) > 0
+    print(format_results(all_results[:5], show_project=show_project))
+
+    active_includes = [p for p in included_projects if p != PROJECT]
+    if active_includes:
+        print(f"\n  (searched {PROJECT} + {', '.join(active_includes)})")
     return 0
 
 
@@ -410,9 +448,10 @@ def cmd_rebuild_index(args: list[str], lib) -> int:
 def main() -> int:
     global PROJECT, MEMORY_FILE
 
-    # Parse --project flag before anything else
+    # Parse flags: --project, --include
     args = list(sys.argv[1:])
     project_flag = None
+    include_flags = []
     remaining = []
     i = 0
     while i < len(args):
@@ -421,6 +460,12 @@ def main() -> int:
             i += 2
         elif args[i].startswith("--project="):
             project_flag = args[i].split("=", 1)[1]
+            i += 1
+        elif args[i] == "--include" and i + 1 < len(args):
+            include_flags.append(args[i + 1])
+            i += 2
+        elif args[i].startswith("--include="):
+            include_flags.append(args[i].split("=", 1)[1])
             i += 1
         else:
             remaining.append(args[i])
@@ -431,6 +476,12 @@ def main() -> int:
         MEMORY_FILE = os.path.join(ROOT_DIR, PROJECT, "MEMORY.md")
         os.environ["MEMORY_PROJECT"] = PROJECT
 
+    # Validate included projects exist
+    for inc in include_flags:
+        inc_path = os.path.join(ROOT_DIR, inc, "MEMORY.md")
+        if not os.path.exists(inc_path):
+            print(f"Warning: included project '{inc}' has no MEMORY.md at {inc_path}", file=sys.stderr)
+
     if not os.path.exists(MEMORY_FILE):
         print(f"ERROR: MEMORY.md not found at {MEMORY_FILE}", file=sys.stderr)
         print(f"       (use --project <name> to specify a different project)", file=sys.stderr)
@@ -439,7 +490,7 @@ def main() -> int:
     lib = import_memory_lib()
 
     if not remaining:
-        print("Usage: memory-search [--project <name>] <query>")
+        print("Usage: memory-search [--project <name>] [--include <project>...] <query>")
         print("   or: memory-search [--project <name>] --list-tags")
         print("   or: memory-search [--project <name>] --rebuild-index")
         return 1
@@ -455,7 +506,7 @@ def main() -> int:
         print(f"ERROR: Unknown flag '{command}'", file=sys.stderr)
         return 1
     else:
-        return cmd_search(remaining, lib)
+        return cmd_search(remaining, lib, included_projects=include_flags)
 
 
 if __name__ == "__main__":
