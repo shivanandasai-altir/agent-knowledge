@@ -28,7 +28,10 @@ from collections import Counter
 # ── Paths ──────────────────────────────────────────────────────────────────
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-MEMORY_FILE = os.path.join(SCRIPT_DIR, "MEMORY.md")
+ROOT_DIR = os.path.dirname(SCRIPT_DIR)  # parent of project dir
+DEFAULT_PROJECT = os.path.basename(SCRIPT_DIR)
+PROJECT = os.environ.get("MEMORY_PROJECT", DEFAULT_PROJECT)
+MEMORY_FILE = os.path.join(ROOT_DIR, PROJECT, "MEMORY.md")
 LIB_FILE = os.path.join(SCRIPT_DIR, "memory_lib.py")
 
 # ── Import memory_lib for parsing ─────────────────────────────────────────
@@ -307,9 +310,9 @@ def cmd_search(args: list[str], lib) -> int:
     """Run a search query."""
     query = " ".join(args)
     if not query:
-        print("Usage: memory-search <query>")
-        print("   or: memory-search --list-tags")
-        print("   or: memory-search --rebuild-index")
+        print("Usage: memory-search [--project <name>] <query>")
+        print("   or: memory-search [--project <name>] --list-tags")
+        print("   or: memory-search [--project <name>] --rebuild-index")
         return 1
 
     active, _ = parse_entries_from_file(MEMORY_FILE, lib)
@@ -405,21 +408,44 @@ def cmd_rebuild_index(args: list[str], lib) -> int:
 
 
 def main() -> int:
+    global PROJECT, MEMORY_FILE
+
+    # Parse --project flag before anything else
+    args = list(sys.argv[1:])
+    project_flag = None
+    remaining = []
+    i = 0
+    while i < len(args):
+        if args[i] == "--project" and i + 1 < len(args):
+            project_flag = args[i + 1]
+            i += 2
+        elif args[i].startswith("--project="):
+            project_flag = args[i].split("=", 1)[1]
+            i += 1
+        else:
+            remaining.append(args[i])
+            i += 1
+
+    if project_flag:
+        PROJECT = project_flag
+        MEMORY_FILE = os.path.join(ROOT_DIR, PROJECT, "MEMORY.md")
+        os.environ["MEMORY_PROJECT"] = PROJECT
+
     if not os.path.exists(MEMORY_FILE):
         print(f"ERROR: MEMORY.md not found at {MEMORY_FILE}", file=sys.stderr)
+        print(f"       (use --project <name> to specify a different project)", file=sys.stderr)
         return 1
 
     lib = import_memory_lib()
 
-    args = sys.argv[1:]
-    if not args:
-        print("Usage: memory-search <query>")
-        print("   or: memory-search --list-tags")
-        print("   or: memory-search --rebuild-index")
+    if not remaining:
+        print("Usage: memory-search [--project <name>] <query>")
+        print("   or: memory-search [--project <name>] --list-tags")
+        print("   or: memory-search [--project <name>] --rebuild-index")
         return 1
 
-    command = args[0]
-    rest = args[1:]
+    command = remaining[0]
+    rest = remaining[1:]
 
     if command == "--list-tags":
         return cmd_list_tags(rest, lib)
@@ -429,7 +455,7 @@ def main() -> int:
         print(f"ERROR: Unknown flag '{command}'", file=sys.stderr)
         return 1
     else:
-        return cmd_search(args, lib)
+        return cmd_search(remaining, lib)
 
 
 if __name__ == "__main__":

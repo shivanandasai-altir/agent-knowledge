@@ -65,6 +65,20 @@ echo '{
 | `--push` | After writing, auto-commit and push to the agent-knowledge repo. Use for team sharing. |
 | (none) | Write locally only. Use when offline or testing. |
 
+### Project Support
+
+Add a `project` field to write to a different project subdirectory:
+
+```bash
+echo '{
+  "project":"chip1-mobile",
+  "action":"add",
+  "title":"..."
+}' | bash ~/agent-knowledge/chip1/update-memory.sh --push
+```
+
+Default: `chip1` (the script's directory name). Future: `chip1-mobile`, `chip1-analytics`, etc.
+
 ## CRUD Rules
 
 1. **NOOP on duplicate** — Same title + same pattern = ignored.
@@ -96,14 +110,22 @@ A zero-dependency TF-IDF search tool. Parses MEMORY.md and ranks entries by rele
 # Search by task description (returns top 5 matches)
 python3 ~/agent-knowledge/chip1/memory-search "user clears a date field but nothing saves"
 
+# Search a different project's journal
+python3 ~/agent-knowledge/chip1/memory-search --project chip1-mobile "push notification pattern"
+
 # List all tags grouped by frequency
 python3 ~/agent-knowledge/chip1/memory-search --list-tags
+
+# List tags for a specific project
+python3 ~/agent-knowledge/chip1/memory-search --project chip1-mobile --list-tags
 
 # Regenerate the Memory Index section (auto-run by update-memory.sh)
 python3 ~/agent-knowledge/chip1/memory-search --rebuild-index
 ```
 
 Output includes relevance score (0-1), a visual bar, tags, context, and pattern snippet.
+
+Specify `--project <name>` to target a different project directory (default: `chip1`).
 
 ## Extracting Memory from a PR
 

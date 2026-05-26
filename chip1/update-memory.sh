@@ -6,6 +6,9 @@
 #   echo '{"action":"add","title":"...","context":"...","pattern":"..."}' \
 #     | bash update-memory.sh [--push]
 #
+#   echo '{"project":"chip1-mobile", ...}' \
+#     | bash ~/agent-knowledge/chip1/update-memory.sh --push
+#
 # --push : commit and push changes to the shared agent-knowledge repo.
 #
 # Input JSON fields:
@@ -13,6 +16,8 @@
 #   title       - Entry title (unique identifier)
 #   context     - Why this decision was made
 #   pattern     - The actionable convention/rule
+#   project     - Project subdirectory name (default: chip1)
+#   tags        - Comma-separated keywords for memory-search
 #   supersedes  - Title to mark as superseded (optional)
 #   author      - Who made the change (optional, for audit trail)
 #   wikiFiles   - Array of wiki file names (optional)
@@ -24,25 +29,30 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-MEMORY_FILE="$SCRIPT_DIR/MEMORY.md"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MEMORY_LIB="$SCRIPT_DIR/memory_lib.py"
 
 # ── Read stdin ─────────────────────────────────────────────────────────────
 
 INPUT=$(cat) || { echo "ERROR: no input" >&2; exit 1; }
 
-# ── Parse action / title / author (one Python call, no jq) ─────────────────
+# ── Parse fields (one Python call, no jq) ──────────────────────────────────
 
 # Use \x1f (unit separator) as delimiter — safe for arbitrary text.
-IFS=$'\x1f' read -r ACTION TITLE AUTHOR < <(
+IFS=$'\x1f' read -r ACTION TITLE AUTHOR PROJECT < <(
   echo "$INPUT" | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
-print(d.get('action',''), d.get('title',''), d.get('author',''), sep='\x1f')
+print(d.get('action',''), d.get('title',''), d.get('author',''), d.get('project',''), sep='\x1f')
 "
 )
 
 [ -n "$ACTION" ] || { echo "ERROR: action is required (add|update|delete|list)" >&2; exit 1; }
+
+# Default project to the script's directory name (e.g. "chip1")
+: "${PROJECT:=$(basename "$SCRIPT_DIR")}"
+
+MEMORY_FILE="$ROOT_DIR/$PROJECT/MEMORY.md"
 
 # ── Check push flag ───────────────────────────────────────────────────────
 
@@ -56,6 +66,7 @@ done
 if [ ! -f "$MEMORY_FILE" ]; then
   echo "SKIP: $MEMORY_FILE not found. Clone agent-knowledge repo first:"
   echo "  git clone git@github.com:shivanandasai-altir/agent-knowledge.git ~/agent-knowledge"
+  echo "  mkdir -p \"$ROOT_DIR/$PROJECT\"  # then run again"
   exit 0
 fi
 
@@ -65,13 +76,15 @@ echo "$INPUT" | python3 "$MEMORY_LIB"
 
 # ── Rebuild Memory Index ───────────────────────────────────────────────────
 
-"$SCRIPT_DIR/memory-search" --rebuild-index 2>/dev/null || true
+"$SCRIPT_DIR/memory-search" --project "$PROJECT" --rebuild-index 2>/dev/null || true
 
 # ── Push (optional) ───────────────────────────────────────────────────────
 
 if [ "$PUSH" = "1" ] && [ "$ACTION" != "list" ]; then
-  cd "$SCRIPT_DIR/.."
-  git add chip1/MEMORY.md 2>/dev/null || true
+  cd "$ROOT_DIR"
+
+  # Stage the right MEMORY.md
+  git add "$PROJECT/MEMORY.md" 2>/dev/null || true
 
   if git diff --cached --quiet 2>/dev/null; then
     exit 0  # nothing to commit
@@ -79,7 +92,7 @@ if [ "$PUSH" = "1" ] && [ "$ACTION" != "list" ]; then
 
   author_msg=""
   [ -n "$AUTHOR" ] && author_msg=" (by $AUTHOR)"
-  git commit -m "chip1: $ACTION $TITLE$author_msg" 2>/dev/null || true
+  git commit -m "$PROJECT: $ACTION $TITLE$author_msg" 2>/dev/null || true
 
   if git push 2>/dev/null; then
     echo "  (pushed to agent-knowledge)"

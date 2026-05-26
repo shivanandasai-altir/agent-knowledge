@@ -52,6 +52,12 @@ python3 chip1/memory-search "PATCH mutations clearing a date field"
 #       how: Forward diff.unset alongside diff.changed...
 ```
 
+Search a different project (future: `chip1-mobile`):
+
+```bash
+python3 chip1/memory-search --project chip1-mobile "push notification"
+```
+
 Other useful searches:
 
 ```bash
@@ -63,6 +69,9 @@ python3 chip1/memory-search "table column definitions getSimpleCells"
 
 # Listing all tags (to discover what's covered)
 python3 chip1/memory-search --list-tags
+
+# Tags for a specific project
+python3 chip1/memory-search --project chip1-mobile --list-tags
 ```
 
 ### 🤖 For Agents — Before Writing Code
@@ -102,6 +111,18 @@ echo '{
 
 The `--push` flag commits and pushes for the team. Without it, writes locally.
 
+To target a different project (future: `chip1-mobile`, `chip1-analytics`):
+
+```bash
+# Add `project` field matching the subdirectory name under agent-knowledge/
+echo '{
+  "project": "chip1-mobile",
+  ...
+}' | bash ~/agent-knowledge/chip1/update-memory.sh --push
+```
+
+Default: `chip1` (the directory the script lives in).
+
 #### 🗣️ Prompt to tell your AI agent
 
 > Extract the key convention or decision from PR #3925 and persist it to the memory journal with `--push`. Include context, pattern, tags, author, source files, and which doc it relates to.
@@ -109,6 +130,10 @@ The `--push` flag commits and pushes for the team. Without it, writes locally.
 Or after fixing a bug that revealed a pattern you want captured:
 
 > The fix for this bug (clearing a date field silently failed) reveals a pattern we need to capture. Add a memory entry titled "PATCH mutations must forward diff.unset for cleared fields" with tags, source files, and push it.
+
+When targeting a different project:
+
+> Persist this decision to the chip1-mobile project memory journal. Include project: chip1-mobile in the JSON.
 
 ### 📤 Extracting Decisions from a GitHub PR
 
@@ -179,6 +204,7 @@ Or for a more general sweep:
 | `sourceFiles` | | Array of source file paths |
 | `relatedDocs` | | Array of doc paths |
 | `wikiFiles` | | Array of wiki/ADR file names |
+| `project` | | Project subdirectory name (default: `chip1`). Future: `chip1-mobile`, `chip1-analytics`, etc. |
 
 ## Requirements
 

@@ -556,8 +556,10 @@ def main() -> int:
         return action_get_fields(data)
 
     # Inject context for CRUD actions
-    script_dir = Path(__file__).resolve().parent
-    data["filepath"] = str(script_dir / "MEMORY.md")
+    script_dir = Path(__file__).resolve().parent          # e.g. ~/agent-knowledge/chip1/
+    root_dir = script_dir.parent                           # e.g. ~/agent-knowledge/
+    project = data.get("project", "") or script_dir.name  # default: directory name ("chip1")
+    data["filepath"] = str(root_dir / project / "MEMORY.md")
     data["today"] = Date.today().strftime("%Y-%m-%d")
 
     return run_memory_crud(data)

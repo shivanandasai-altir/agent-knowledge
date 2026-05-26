@@ -119,6 +119,13 @@ echo '{
   "relatedDocs": [".claude/docs/architecture-patterns.md"],
   "supersedes": ""
 }' | bash ~/agent-knowledge/chip1/update-memory.sh --push
+
+# Or target a different project (future: chip1-mobile)
+echo '{
+  "project": "chip1-mobile",
+  "action": "add",
+  ...
+}' | bash ~/agent-knowledge/chip1/update-memory.sh --push
 ```
 
 ### List all active entries
