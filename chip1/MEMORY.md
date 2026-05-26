@@ -102,6 +102,6 @@ Pattern: Use `requiresPageAccess` on TNavLink + `usePageAccess(path)` guard in p
 
 
 ### 2026-05-27 — Always run pnpm check:typescript before committing
-Status: active
+Status: archived
 Context: Type errors must be caught before commit
 Pattern: Run pnpm check:typescript before every commit
