@@ -103,8 +103,11 @@ bash chip1/pr-memory.sh 3925
 ### Bootstrap a New Project
 
 ```bash
+cd ~/agent-knowledge
 bash chip1/new-project.sh chip1-mobile
-cd ~/agent-knowledge && git add chip1-mobile && git commit -m "chip1-mobile: bootstrap" && git push
+git add chip1-mobile
+git commit -m "chip1-mobile: bootstrap"
+git push
 ```
 
 ---

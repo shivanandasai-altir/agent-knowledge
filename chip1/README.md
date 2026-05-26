@@ -137,14 +137,14 @@ python3 ~/agent-knowledge/chip1/memory-search --project chip1-mobile --include c
 ### Bootstrapping a new project
 
 ```bash
-bash ~/agent-knowledge/chip1/new-project.sh chip1-mobile
+cd ~/agent-knowledge
+bash chip1/new-project.sh chip1-mobile
+git add chip1-mobile
+git commit -m "chip1-mobile: bootstrap"
+git push
 ```
 
-Creates the project directory with symlinks to shared scripts. Push it:
-
-```bash
-cd ~/agent-knowledge && git add chip1-mobile && git commit -m "chip1-mobile: bootstrap" && git push
-```
+This creates `~/agent-knowledge/chip1-mobile/` as a sibling of `chip1/` (not inside it), with symlinks to shared scripts.
 
 ### Add a decision
 
