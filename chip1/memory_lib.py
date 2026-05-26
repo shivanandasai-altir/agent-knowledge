@@ -1,13 +1,26 @@
 #!/usr/bin/env python3
 """
-memory_lib.py — Parse, manipulate, and render the chip1 MEMORY.md table format.
+memory_lib.py — Memory journal library for chip1.
 
-Reads JSON from stdin with action + fields, operates on MEMORY.md in the same
-directory, and writes back in the two-table format (Active / Archived).
+Two modes of operation (determined by first CLI argument):
 
-Usage (called from update-memory.sh):
-  echo '{"action":"add","title":"...","author":"...","context":"...","pattern":"..."}' \\
-    | python3 path/to/memory_lib.py
+╔══════════════════════════════════════════════════════════════════╗
+║  MEMORY CRUD (default)                                         ║
+║  Reads JSON from stdin, operates on MEMORY.md.                 ║
+║    echo '{"action":"add",...}' | python3 memory_lib.py         ║
+║    echo '{"action":"list"}'    | python3 memory_lib.py         ║
+║                                                                ║
+║  Actions: add, update, delete, list, get-fields                ║
+╚══════════════════════════════════════════════════════════════════╝
+
+╔══════════════════════════════════════════════════════════════════╗
+║  PR FORMATTING (when first arg is a format command)            ║
+║  Reads JSON from stdin, outputs formatted text.                ║
+║    gh pr view 4099 --json files | python3 memory_lib.py files  ║
+║    gh api /repos/.../comments  | python3 memory_lib.py comments║
+║                                                                ║
+║  Commands: metadata, files, body, comments                     ║
+╚══════════════════════════════════════════════════════════════════╝
 """
 
 import sys
@@ -16,8 +29,12 @@ import re
 from datetime import date as Date
 from pathlib import Path
 
+# ============================================================================
+# MEMORY CRUD — parse, manipulate, and render MEMORY.md table format
+# ============================================================================
 
 # ── Helpers ────────────────────────────────────────────────────────────────
+
 
 def esc(text: str) -> str:
     """Escape pipe characters for markdown tables."""
@@ -47,6 +64,7 @@ def split_table_row(row: str) -> list[str]:
 
 
 # ── Parsing ────────────────────────────────────────────────────────────────
+
 
 def parse_header(lines: list[str]) -> list[str]:
     """Extract header lines (before the first ## section heading)."""
@@ -87,17 +105,13 @@ def _row_to_entry(cols: list[str]) -> dict | None:
         return None
 
     entry: dict = {"date": cols[0].strip(), "fields": {}}
-
-    # Title (strip **bold** markers)
     entry["title"] = re.sub(r"^\*\*|\*\*$", "", cols[1].strip())
 
     if len(cols) == 4:
-        # Active table: date | title | author | details
         entry["fields"]["Status"] = "active"
         entry["fields"]["Author"] = cols[2].strip()
         _parse_details(cols[3], entry["fields"])
     elif len(cols) == 5:
-        # Archived table: date | title | author | archived_by | details
         entry["fields"]["Status"] = "archived"
         entry["fields"]["Author"] = cols[2].strip()
         entry["fields"]["Archived by"] = cols[3].strip()
@@ -153,6 +167,7 @@ def _parse_details(details: str, fields: dict) -> None:
 
 # ── Rendering ──────────────────────────────────────────────────────────────
 
+
 def format_details(entry: dict) -> str:
     """Build the Details column content for a table row."""
     f = entry["fields"]
@@ -179,8 +194,6 @@ def format_details(entry: dict) -> str:
 def render_file(header: list[str], entries: list[dict]) -> str:
     """Render the full MEMORY.md content as two tables."""
     lines = list(header)
-
-    # Ensure header ends with blank line
     if lines and lines[-1].strip():
         lines.append("")
 
@@ -216,6 +229,7 @@ def render_file(header: list[str], entries: list[dict]) -> str:
 
 # ── Entry helpers ─────────────────────────────────────────────────────────
 
+
 def find_active(entries: list[dict], title: str) -> tuple[int | None, dict | None]:
     """Find an active entry by exact title match."""
     for i, e in enumerate(entries):
@@ -234,10 +248,23 @@ def handle_supersede(entries: list[dict], old_title: str, new_title: str) -> boo
     return False
 
 
-# ── Actions ────────────────────────────────────────────────────────────────
+# ── CRUD Actions ───────────────────────────────────────────────────────────
+
+
+def _read_entries(filepath: str) -> tuple[list[str], list[dict]]:
+    """Read and parse MEMORY.md, returning (header, entries)."""
+    fp = Path(filepath)
+    lines = fp.read_text(encoding="utf-8").split("\n")
+    return parse_header(lines), parse_entries(lines)
+
+
+def _write_entries(filepath: str, header: list[str], entries: list[dict]) -> None:
+    """Render and write entries to MEMORY.md."""
+    Path(filepath).write_text(render_file(header, entries), encoding="utf-8")
+
 
 def action_add(data: dict) -> int:
-    fp = Path(data["filepath"])
+    fp = data["filepath"]
     title = data.get("title", "").strip()
     if not title:
         print("ERROR: title is required", file=sys.stderr)
@@ -252,9 +279,7 @@ def action_add(data: dict) -> int:
     source_files = data.get("sourceFiles", [])
     related_docs = data.get("relatedDocs", [])
 
-    lines = fp.read_text(encoding="utf-8").split("\n")
-    header = parse_header(lines)
-    entries = parse_entries(lines)
+    header, entries = _read_entries(fp)
 
     # Check for existing active entry with same title
     idx, existing = find_active(entries, title)
@@ -263,14 +288,13 @@ def action_add(data: dict) -> int:
         if existing_pattern == pattern:
             print(f'NOOP: Entry "{title}" already exists with same pattern.')
             return 0
-        # Update in place
         if context:
             existing["fields"]["Context"] = context
         if pattern:
             existing["fields"]["Pattern"] = pattern
         if author:
             existing["fields"]["Author"] = author
-        fp.write_text(render_file(header, entries), encoding="utf-8")
+        _write_entries(fp, header, entries)
         print(f'UPDATED: "{title}" (same title, pattern refined).')
         return 0
 
@@ -282,11 +306,7 @@ def action_add(data: dict) -> int:
     entry: dict = {
         "date": today,
         "title": title,
-        "fields": {
-            "Status": "active",
-            "Context": context,
-            "Pattern": pattern,
-        },
+        "fields": {"Status": "active", "Context": context, "Pattern": pattern},
     }
     if author:
         entry["fields"]["Author"] = author
@@ -300,7 +320,7 @@ def action_add(data: dict) -> int:
         entry["fields"]["Supersedes"] = supersedes
 
     entries.insert(0, entry)
-    fp.write_text(render_file(header, entries), encoding="utf-8")
+    _write_entries(fp, header, entries)
 
     msg = f'ADDED: "{title}"'
     if supersedes:
@@ -310,15 +330,13 @@ def action_add(data: dict) -> int:
 
 
 def action_update(data: dict) -> int:
-    fp = Path(data["filepath"])
+    fp = data["filepath"]
     title = data.get("title", "").strip()
     context = data.get("context", "")
     pattern = data.get("pattern", "")
     author = data.get("author", "")
 
-    lines = fp.read_text(encoding="utf-8").split("\n")
-    header = parse_header(lines)
-    entries = parse_entries(lines)
+    header, entries = _read_entries(fp)
 
     found = False
     for e in entries:
@@ -334,7 +352,7 @@ def action_update(data: dict) -> int:
                 found = True
 
     if found:
-        fp.write_text(render_file(header, entries), encoding="utf-8")
+        _write_entries(fp, header, entries)
         print(f'UPDATED: "{title}".')
     else:
         print(f'ERROR: Entry "{title}" not found.', file=sys.stderr)
@@ -343,13 +361,11 @@ def action_update(data: dict) -> int:
 
 
 def action_delete(data: dict) -> int:
-    fp = Path(data["filepath"])
+    fp = data["filepath"]
     title = data.get("title", "").strip()
     author = data.get("author", "")
 
-    lines = fp.read_text(encoding="utf-8").split("\n")
-    header = parse_header(lines)
-    entries = parse_entries(lines)
+    header, entries = _read_entries(fp)
 
     found = False
     for e in entries:
@@ -361,7 +377,7 @@ def action_delete(data: dict) -> int:
             break
 
     if found:
-        fp.write_text(render_file(header, entries), encoding="utf-8")
+        _write_entries(fp, header, entries)
         print(f'ARCHIVED: "{title}". Entry kept in journal for history.')
     else:
         print(f'ERROR: Entry "{title}" not found.', file=sys.stderr)
@@ -370,9 +386,7 @@ def action_delete(data: dict) -> int:
 
 
 def action_list(data: dict) -> int:
-    fp = Path(data["filepath"])
-    lines = fp.read_text(encoding="utf-8").split("\n")
-    entries = parse_entries(lines)
+    _, entries = _read_entries(data["filepath"])
 
     active = [(e["title"], e["date"]) for e in entries if e["fields"].get("Status", "active") == "active"]
     superseded = [(e["title"], e["date"]) for e in entries if e["fields"].get("Status") == "superseded"]
@@ -392,35 +406,147 @@ def action_list(data: dict) -> int:
     return 0
 
 
-# ── Dispatch ───────────────────────────────────────────────────────────────
+def action_get_fields(data: dict) -> int:
+    """Extract action/title/author from JSON — replaces `jq` in shell scripts.
 
-ACTIONS = {
+    Outputs tab-separated values for easy parsing: action\ttitle\tauthor
+    """
+    action = data.get("action", "")
+    title = data.get("title", "")
+    author = data.get("author", "")
+    # Use \x1f (unit separator) as delimiter — safe for any text content
+    print(f"{action}\x1f{title}\x1f{author}")
+    return 0
+
+
+MEMORY_ACTIONS = {
     "add": action_add,
     "update": action_update,
     "delete": action_delete,
     "list": action_list,
+    "get-fields": action_get_fields,
 }
 
 
+def run_memory_crud(data: dict) -> int:
+    """Dispatch a memory CRUD operation."""
+    action = data.get("action", "")
+    handler = MEMORY_ACTIONS.get(action)
+    if not handler:
+        print(f'ERROR: Unknown action "{action}"', file=sys.stderr)
+        return 1
+    return handler(data)
+
+
+# ============================================================================
+# PR FORMATTING — format GitHub API output for human reading
+# ============================================================================
+
+
+def pr_metadata(data: dict) -> str:
+    """Format PR metadata as-is (JSON dump)."""
+    return json.dumps(data, indent=2)
+
+
+def pr_files(data: dict) -> str:
+    """Format PR files list as human-readable lines."""
+    out = []
+    for f in data.get("files", []):
+        out.append(f"  {f['path']}  (+{f['additions']}/-{f['deletions']})")
+    return "\n".join(out) if out else "  (none)"
+
+
+def pr_body(data: dict) -> str:
+    """Format PR description, stripping images and truncating."""
+    body = data.get("body", "") or ""
+    body = re.sub(r"!\[.*?\]\(.*?\)", "[image]", body)
+    body = re.sub(r"<img[^>]*>", "[image]", body)
+    if len(body) > 3000:
+        body = body[:3000] + "\n...(truncated)"
+    return body or "  (empty)"
+
+
+def pr_comments(data: list | dict) -> str:
+    """Format PR review or conversation comments."""
+    if not isinstance(data, list):
+        return "  (unexpected format)"
+    if not data:
+        return "  (none)"
+    out = []
+    for c in data:
+        user = c.get("user", {}).get("login", "?")
+        body = c.get("body", "") or ""
+        body = " ".join(body.split())
+        if len(body) > 500:
+            body = body[:500] + "...(truncated)"
+        out.append(f"  [{user}] {body}")
+    return "\n".join(out)
+
+
+PR_FORMATTERS = {
+    "metadata": pr_metadata,
+    "files": pr_files,
+    "body": pr_body,
+    "comments": pr_comments,
+}
+
+
+def run_pr_format(args: list[str]) -> int:
+    """Format PR JSON from stdin using the named formatter."""
+    if not args:
+        print("ERROR: format command required (metadata|files|body|comments)", file=sys.stderr)
+        return 1
+
+    cmd = args[0]
+    handler = PR_FORMATTERS.get(cmd)
+    if not handler:
+        print(f"ERROR: Unknown format command '{cmd}'", file=sys.stderr)
+        return 1
+
+    raw = sys.stdin.read().strip()
+    if not raw:
+        print("  (no data)")
+        return 0
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        print("  (parse error)")
+        return 0
+
+    print(handler(data))
+    return 0
+
+
+# ============================================================================
+# Main dispatch
+# ============================================================================
+
+
 def main() -> int:
-    raw = sys.stdin.read()
-    if not raw.strip():
+    # If first CLI arg matches a PR format command, run that
+    if len(sys.argv) > 1 and sys.argv[1] in PR_FORMATTERS:
+        return run_pr_format(sys.argv[1:])
+
+    # Otherwise, run memory CRUD from stdin JSON
+    raw = sys.stdin.read().strip()
+    if not raw:
         print("ERROR: no input", file=sys.stderr)
         return 1
 
     data = json.loads(raw)
     action = data.get("action", "")
-    handler = ACTIONS.get(action)
-    if not handler:
-        print(f'ERROR: Unknown action "{action}"', file=sys.stderr)
-        return 1
 
-    # Resolve filepath relative to this script
+    # Shortcut: get-fields doesn't need filepath/today
+    if action == "get-fields":
+        return action_get_fields(data)
+
+    # Inject context for CRUD actions
     script_dir = Path(__file__).resolve().parent
     data["filepath"] = str(script_dir / "MEMORY.md")
     data["today"] = Date.today().strftime("%Y-%m-%d")
 
-    return handler(data)
+    return run_memory_crud(data)
 
 
 if __name__ == "__main__":
