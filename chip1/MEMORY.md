@@ -99,3 +99,9 @@ Pattern: Use explicit relative paths: `"@/*": ["./src/*"]`. No baseUrl. See `.cl
 Status: active
 Context: Feature flag alone doesn't prevent tenant-level access. Permission endpoint alone doesn't prevent route registration.
 Pattern: Use `requiresPageAccess` on TNavLink + `usePageAccess(path)` guard in page component. Both gates required. See `.claude/docs/app-specific-patterns.md`.
+
+
+### 2026-05-27 — Always run pnpm check:typescript before committing
+Status: active
+Context: Type errors must be caught before commit
+Pattern: Run pnpm check:typescript before every commit
