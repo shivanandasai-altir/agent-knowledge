@@ -1,3 +1,4 @@
 # No build artifacts expected at this level.
 # Each project directory manages its own content.
 .DS_Store
+__pycache__/
